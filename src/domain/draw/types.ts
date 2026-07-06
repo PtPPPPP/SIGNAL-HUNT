@@ -6,6 +6,12 @@ export interface Event {
   code: string;
   status: EventStatus;
   createdAt: string;
+  /**
+   * Optional ISO-8601 exhibition window. Non-indexed and optional: events created
+   * before v2 simply have undefined values and remain valid.
+   */
+  startAt?: string;
+  endAt?: string;
 }
 
 export interface Prize {

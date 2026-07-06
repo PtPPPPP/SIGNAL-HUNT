@@ -9,7 +9,9 @@ import {
   recoverCommittedDraw,
 } from '../../db/drawRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
+import { getLatestEventByStatus } from '../../db/eventRepository';
 import { ensureDemoSeed } from '../../features/display/displayBootstrap';
+import { logStructured, type LogEntryType } from '../../features/diagnostics/errorLog';
 import {
   createInitialDisplayState,
   getDisplayCopy,
@@ -36,6 +38,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
   const [displayState, setDisplayState] = useState<DisplayState>(createInitialDisplayState);
   const [revealedPrizeName, setRevealedPrizeName] = useState<string | undefined>(undefined);
   const [confirmExit, setConfirmExit] = useState(false);
+  const [blockedMessage, setBlockedMessage] = useState<{ title: string; subtitle: string } | null>(null);
 
   const panelRef = useRef<HTMLElement | null>(null);
   const timeoutIdsRef = useRef<number[]>([]);
@@ -208,10 +211,31 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
 
         if (!event) {
           eventIdRef.current = undefined;
+
+          // No ACTIVE event. In dev ensureDemoSeed already handled the empty case;
+          // in production an empty/ended/paused DB is a real operating condition we
+          // must surface instead of papering over with fake prizes.
+          const paused = await getLatestEventByStatus(db, 'PAUSED');
+
+          if (paused) {
+            setBlockedMessage(null);
+            setDisplayState((current) =>
+              current.status === 'PAUSED' ? current : applyEvent(current, { type: 'PAUSE' }),
+            );
+            return;
+          }
+
+          const eventCount = await db.events.count();
+          setBlockedMessage(
+            eventCount > 0
+              ? { title: '活动已结束', subtitle: 'EVENT ENDED' }
+              : { title: '尚未配置活动', subtitle: 'NO EVENT CONFIGURED' },
+          );
           setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
           return;
         }
 
+        setBlockedMessage(null);
         eventIdRef.current = event.id;
 
         const recovered = await recoverCommittedDraw(db, event.id);
@@ -250,6 +274,61 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
     };
   }, [db]);
 
+  // Re-evaluate event status when the kiosk regains focus (operator may have just
+  // paused/ended the event from /admin on the same machine). Only nudges toward a
+  // blocked/paused state and never disturbs an in-flight draw or auto-resumes.
+  useEffect(() => {
+    const recheck = () => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      const status = stateRef.current.status;
+
+      if (status !== 'ATTRACT' && status !== 'PAUSED' && status !== 'BOOT') {
+        return;
+      }
+
+      if (commitInFlightRef.current) {
+        return;
+      }
+
+      void (async () => {
+        try {
+          const event = await getActiveEvent(db);
+
+          if (event) {
+            setBlockedMessage(null);
+            return;
+          }
+
+          const paused = await getLatestEventByStatus(db, 'PAUSED');
+
+          if (paused) {
+            if (stateRef.current.status !== 'PAUSED') {
+              setDisplayState((current) => applyEvent(current, { type: 'PAUSE' }));
+            }
+
+            return;
+          }
+
+          const eventCount = await db.events.count();
+          setBlockedMessage(
+            eventCount > 0
+              ? { title: '活动已结束', subtitle: 'EVENT ENDED' }
+              : { title: '尚未配置活动', subtitle: 'NO EVENT CONFIGURED' },
+          );
+        } catch (error) {
+          log('DATABASE_ERROR', { stage: 'focusRecheck', message: toErrorMessage(error) });
+        }
+      })();
+    };
+
+    window.addEventListener('focus', recheck);
+
+    return () => window.removeEventListener('focus', recheck);
+  }, [db]);
+
   // Panel intro animation on status change (skipped under reduced-motion).
   useEffect(() => {
     const panel = panelRef.current;
@@ -280,7 +359,13 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
         SIGNAL ONLINE
       </div>
 
-      {isResult ? (
+      {blockedMessage ? (
+        <section className="display-panel" ref={panelRef}>
+          <p className="display-eyebrow">{blockedMessage.subtitle}</p>
+          <h1 id="display-title">{blockedMessage.title}</h1>
+          <p className="display-copy">请联系现场工作人员处理</p>
+        </section>
+      ) : isResult ? (
         <section className="display-result" ref={panelRef} aria-label="中奖结果">
           <p className="display-result-eyebrow">{copy.subtitle}</p>
           <h1 id="display-title" className="display-result-heading">
@@ -354,6 +439,6 @@ function toErrorMessage(value: unknown): string {
   return value instanceof Error ? value.message : String(value);
 }
 
-function log(event: string, details: Record<string, unknown>): void {
-  console.info(`[SIGNAL-HUNT] ${event}`, details);
+function log(type: LogEntryType, details: Record<string, unknown>): void {
+  logStructured(type, details);
 }

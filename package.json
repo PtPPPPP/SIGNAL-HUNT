@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:stress": "vitest run src/stress --config vitest.reliability.config.ts",
+    "burnin:short": "vitest run src/burn-in --config vitest.reliability.config.ts"
   },
   "dependencies": {
     "dexie": "^4.4.4",

@@ -65,13 +65,42 @@ function createDemoPrizes(): Prize[] {
 }
 
 /**
- * Ensures the kiosk has an active event with a prize pool to draw from.
+ * Whether the demo seed may auto-create a demo event + prizes.
  *
- * Seeds a demo event + prizes only when no ACTIVE event exists yet, so it never
- * overwrites data an operator has imported through the admin tools. Remove once
- * event management exists in the admin UI.
+ * - `VITE_ENABLE_DEMO_SEED='true'`  → always allowed (use to test a prod build locally).
+ * - `VITE_ENABLE_DEMO_SEED='false'` → never allowed, even in dev/test (exercises the
+ *   empty-database "no event configured" path).
+ * - unset                         → allowed in dev/test, forbidden in production builds.
+ *
+ * Production kiosks must NEVER silently fabricate demo prizes for a real exhibition,
+ * so the production default is off. Operators are expected to create/import the real
+ * event via /admin/event and /admin/prizes.
+ */
+export function isDemoSeedEnabled(): boolean {
+  const flag = import.meta.env.VITE_ENABLE_DEMO_SEED;
+
+  if (flag === 'true') {
+    return true;
+  }
+
+  if (flag === 'false') {
+    return false;
+  }
+
+  return import.meta.env.DEV;
+}
+
+/**
+ * Ensures the kiosk has an active event with a prize pool to draw from — but ONLY
+ * when demo seeding is enabled (see isDemoSeedEnabled). Seeds a demo event + prizes
+ * only when no ACTIVE event exists yet, so it never overwrites data an operator has
+ * imported through the admin tools. In production this is a no-op.
  */
 export async function ensureDemoSeed(db: SignalHuntDatabase): Promise<void> {
+  if (!isDemoSeedEnabled()) {
+    return;
+  }
+
   const activeEvent = await getActiveEvent(db);
 
   if (activeEvent) {

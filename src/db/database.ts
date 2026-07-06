@@ -3,7 +3,17 @@ import Dexie, { type Table } from 'dexie';
 import type { DrawRecord, DrawSession, Event, Prize } from '../domain/draw/types';
 
 export const DATABASE_NAME = 'signal-hunt';
-export const DATABASE_VERSION = 1;
+
+/**
+ * Schema version history.
+ *
+ * v1 — initial schema: events, prizes, drawSessions, drawRecords.
+ * v2 — additive only, no index changes, no data transformation. Existing v1
+ *      records stay valid untouched. Adds optional non-indexed fields:
+ *      - DrawRecord.voidedAt / voidReason  (traceable staff void operations)
+ *      - Event.startAt / endAt             (exhibition window)
+ */
+export const DATABASE_VERSION = 2;
 
 export class SignalHuntDatabase extends Dexie {
   events!: Table<Event, string>;
