@@ -1,0 +1,64 @@
+/*
+ * Quantum Design · SIGNAL HUNT 品牌主题
+ *
+ * 设计原则：
+ *  - 品牌红是强调色（CTA / 峰值 / 锁定 / Active / 关键结果），不是整页底色。
+ *  - 基础层为中性浅灰白 + 白色表面，呈现科研测量面板质感。
+ *  - 所有红色统一来自 --color-brand-red 系列；组件中不得散落硬编码红色。
+ *  - 换品牌色时，只需调整下面「品牌红」一组变量。
+ */
+:root {
+  /* === 品牌红（configurable brand tokens）=== */
+  --color-brand-red: #d00000;
+  --color-brand-red-hover: #b50000;
+  --color-brand-red-active: #980000;
+  --color-brand-soft: rgba(208, 0, 0, 0.08);
+  --color-brand-muted: rgba(208, 0, 0, 0.16);
+  --color-brand-border: rgba(208, 0, 0, 0.45);
+  --color-brand-glow: rgba(208, 0, 0, 0.18);
+
+  /* === 中性背景层（浅）=== */
+  --color-bg-primary: #f7f7f5;
+  --color-bg-secondary: #efefec;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+
+  /* === 文字 === */
+  --color-text-primary: #181818;
+  --color-text-secondary: #666666;
+  --color-text-muted: #8a8a8a;
+
+  /* === 边线 / 测量网格 === */
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-grid: rgba(0, 0, 0, 0.06);
+
+  /* === 信号（浅底：中性灰信号线 + 品牌红峰值）=== */
+  --color-signal: #5a5a5a;
+  --color-signal-dim: rgba(90, 90, 90, 0.16);
+  --color-signal-peak: var(--color-brand-red);
+  --color-cursor: rgba(0, 0, 0, 0.38);
+
+  /* === 状态色（克制使用）=== */
+  --color-success: #2f7d4a;
+  --color-warning: #b96b00;
+  --color-danger: #c0392b; /* danger 独立 token，不与品牌红主按钮混淆 */
+
+  /* === 向后兼容别名 === */
+  --color-brand-primary: var(--color-text-primary);
+
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+}

@@ -1,0 +1,11 @@
+dist
+node_modules
+*.local
+.vite-dev.*.log
+coverage
+
+# 品牌资源不随仓库分发（README 规定由运营手动放入）
+public/brand/logo.png
+
+# Claude Code 本地设置
+.claude/settings.local.json
