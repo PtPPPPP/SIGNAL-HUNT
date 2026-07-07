@@ -11,7 +11,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:stress": "vitest run src/stress --config vitest.reliability.config.ts",
-    "burnin:short": "vitest run src/burn-in --config vitest.reliability.config.ts"
+    "burnin:smoke": "node scripts/burnin.mjs smoke",
+    "burnin:short": "node scripts/burnin.mjs short",
+    "burnin:full": "node scripts/burnin.mjs full",
+    "preflight": "node scripts/preflight.mjs",
+    "verify:quick": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "verify:release": "npm run lint && npm run typecheck && npm run test && npm run test:stress && npm run build",
+    "verify:onsite": "npm run verify:release && npm run burnin:short && npm run preflight"
   },
   "dependencies": {
     "dexie": "^4.4.4",

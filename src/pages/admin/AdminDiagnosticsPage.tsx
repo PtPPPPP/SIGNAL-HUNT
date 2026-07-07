@@ -43,10 +43,31 @@ type EnvironmentSnapshot = {
   viewport: string;
   dpr: number;
   online: boolean;
+  indexedDbAvailable: boolean;
   userAgent: string;
   deviceMemory?: number;
   jsHeapUsed?: number;
   jsHeapLimit?: number;
+};
+
+type PrizeSummary = {
+  total: number;
+  enabledWithRemaining: number;
+  inventoryViolations: string[];
+};
+
+type PreflightStatus = 'pass' | 'fail' | 'warn' | 'info';
+
+type PreflightCheck = {
+  id: string;
+  label: string;
+  status: PreflightStatus;
+  detail?: string;
+};
+
+type PreflightSnapshot = {
+  ready: boolean;
+  checks: PreflightCheck[];
 };
 
 type Snapshot = {
@@ -56,6 +77,7 @@ type Snapshot = {
   draw: DrawSnapshot;
   visual: VisualSnapshot;
   storage: StorageSnapshot;
+  preflight: PreflightSnapshot;
   log: LogEntry[];
 };
 
@@ -65,12 +87,14 @@ const emptySnapshot: Snapshot = {
     viewport: '—',
     dpr: 1,
     online: true,
+    indexedDbAvailable: false,
     userAgent: '—',
   },
   database: { ok: false, schemaVersion: DATABASE_VERSION, counts: { events: 0, prizes: 0, records: 0, sessions: 0 } },
   draw: { hasActiveSession: false },
   visual: { webgl: false, reducedMotion: false, canvasPresent: false, fpsSampling: false },
   storage: { supported: false },
+  preflight: { ready: false, checks: [] },
   log: [],
 };
 
@@ -196,11 +220,127 @@ function gatherEnvironment(): EnvironmentSnapshot {
     viewport: typeof window !== 'undefined' ? `${window.innerWidth}×${window.innerHeight}` : '—',
     dpr: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
     online: typeof navigator !== 'undefined' ? navigator.onLine : true,
+    indexedDbAvailable: typeof indexedDB !== 'undefined',
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '—',
     deviceMemory: nav.deviceMemory,
     jsHeapUsed: memory?.usedJSHeapSize,
     jsHeapLimit: memory?.jsHeapSizeLimit,
   };
+}
+
+/**
+ * Reads the prize table once for the preflight panel: how many prizes exist,
+ * how many are enabled with remaining stock, and any inventory that violates
+ * `0 <= remaining <= total`. Kept separate from gatherDatabase (which only
+ * counts) so a failure here never breaks the core metrics.
+ */
+async function gatherPrizeSummary(db: SignalHuntDatabase): Promise<PrizeSummary> {
+  try {
+    const prizes = await db.prizes.toArray();
+    const inventoryViolations = prizes
+      .filter((prize) => prize.inventoryRemaining < 0 || prize.inventoryRemaining > prize.inventoryTotal)
+      .map((prize) => `${prize.shortName ?? prize.id}: ${prize.inventoryRemaining}/${prize.inventoryTotal}`);
+
+    return {
+      total: prizes.length,
+      enabledWithRemaining: prizes.filter((prize) => prize.enabled && prize.inventoryRemaining > 0).length,
+      inventoryViolations,
+    };
+  } catch {
+    return { total: 0, enabledWithRemaining: 0, inventoryViolations: [] };
+  }
+}
+
+/** Probes the brand logo via HEAD so the preflight can flag a missing asset. */
+async function checkLogoAsset(): Promise<boolean> {
+  if (typeof fetch !== 'function') {
+    return false;
+  }
+
+  try {
+    const response = await fetch('/brand/quantum-design-logo.png', { method: 'HEAD', cache: 'no-store' });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Composes already-gathered snapshot data into a single readiness verdict.
+ * `ready` is true iff no check has status 'fail'. Warnings (e.g. an unfinished
+ * session, dev mode) do not block but must be reviewed by staff.
+ *
+ * Offline is NOT a failure: the app is local-first (AGENTS.md §5), so the
+ * network row is informational only.
+ */
+function computePreflight(args: {
+  database: DatabaseSnapshot;
+  draw: DrawSnapshot;
+  prizeSummary: PrizeSummary;
+  logoOk: boolean;
+  online: boolean;
+}): PreflightSnapshot {
+  const { database, draw, prizeSummary, logoOk, online } = args;
+  const checks: PreflightCheck[] = [
+    {
+      id: 'build',
+      label: '生产构建',
+      status: import.meta.env.PROD ? 'pass' : 'warn',
+      detail: import.meta.env.PROD ? 'production' : `当前 ${import.meta.env.MODE}（现场应使用生产构建）`,
+    },
+    {
+      id: 'logo',
+      label: '品牌 Logo 资源',
+      status: logoOk ? 'pass' : 'fail',
+      detail: logoOk ? '/brand/quantum-design-logo.png 可访问' : 'Logo 缺失或不可访问',
+    },
+    {
+      id: 'database',
+      label: '数据库可访问',
+      status: database.ok ? 'pass' : 'fail',
+      detail: database.ok ? `v${database.schemaVersion}` : `异常：${database.error ?? '未知'}`,
+    },
+    {
+      id: 'activeEvent',
+      label: '存在已激活活动',
+      status: draw.activeEvent ? 'pass' : 'fail',
+      detail: draw.activeEvent
+        ? `${draw.activeEvent.name} (${draw.activeEvent.code})`
+        : '无激活活动，请在 /admin/event 激活',
+    },
+    {
+      id: 'enabledPrizes',
+      label: '至少一个启用且有库存的奖项',
+      status: prizeSummary.enabledWithRemaining > 0 ? 'pass' : 'fail',
+      detail: `${prizeSummary.enabledWithRemaining} 个启用且有库存（共 ${prizeSummary.total} 个奖项）`,
+    },
+    {
+      id: 'inventory',
+      label: '库存一致（0 ≤ remaining ≤ total）',
+      status: prizeSummary.inventoryViolations.length === 0 ? 'pass' : 'fail',
+      detail:
+        prizeSummary.inventoryViolations.length === 0
+          ? '全部奖项库存正常'
+          : `违规：${prizeSummary.inventoryViolations.join('；')}`,
+    },
+    {
+      id: 'activeSession',
+      label: '无未结束中奖会话',
+      status: draw.hasActiveSession ? 'warn' : 'pass',
+      detail: draw.hasActiveSession
+        ? `存在未结束会话 ${draw.activeSessionRecordId ?? ''}，开展前请确认处理`
+        : '无',
+    },
+    {
+      id: 'network',
+      label: '网络状态（离线可用，仅供参考）',
+      status: 'info',
+      detail: online ? '在线' : '离线（本系统本地优先，离线可正常抽奖）',
+    },
+  ];
+
+  return { ready: checks.every((check) => check.status !== 'fail'), checks };
 }
 
 export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosticsPageProps) {
@@ -213,15 +353,18 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
   const [sampling, setSampling] = useState(false);
 
   const gather = useCallback(async () => {
-    const [database, draw, storage] = await Promise.all([
+    const [database, draw, storage, prizeSummary, logoOk] = await Promise.all([
       gatherDatabase(db),
       gatherDraw(db),
       gatherStorage(),
+      gatherPrizeSummary(db),
+      checkLogoAsset(),
     ]);
+    const environment = gatherEnvironment();
 
     setSnapshot({
       app: { version: __APP_VERSION__, mode: import.meta.env.MODE, route: location.pathname },
-      environment: gatherEnvironment(),
+      environment,
       database,
       draw,
       visual: {
@@ -235,6 +378,7 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
         fpsSampling: sampling,
       },
       storage,
+      preflight: computePreflight({ database, draw, prizeSummary, logoOk, online: environment.online }),
       log: readStructuredLog(),
     });
   }, [db, location.pathname, fps, sampling]);
@@ -274,6 +418,42 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
     <AdminLayout title="诊断">
       <p className="admin-message">本页仅供现场工作人员排查使用，请勿向访客展示。</p>
 
+      <section className="admin-table-wrap">
+        <h2>现场自检 / Preflight</h2>
+        <p className="admin-message">
+          <strong>{snapshot.preflight.ready ? '✅ 就绪' : '⛔ 未就绪'}</strong>
+          {snapshot.preflight.ready
+            ? '：关键检查全部通过（警告项仍需现场复核）。'
+            : '：存在阻塞性问题，开展前必须解决。'}
+        </p>
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>检查项</th>
+              <th>结果</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshot.preflight.checks.map((check) => (
+              <tr key={check.id}>
+                <th scope="row">{check.label}</th>
+                <td>
+                  {check.status === 'pass'
+                    ? '✓ 通过'
+                    : check.status === 'fail'
+                      ? '✗ 失败'
+                      : check.status === 'warn'
+                        ? '⚠ 警告'
+                        : '· 信息'}
+                </td>
+                <td>{check.detail}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
       <div className="admin-metric-grid">
         <MetricCard label="App 版本" value={app.version} />
         <MetricCard label="构建模式" value={app.mode} />
@@ -295,6 +475,7 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
             <Row label="视口" value={environment.viewport} />
             <Row label="设备像素比 (DPR)" value={String(environment.dpr)} />
             <Row label="网络" value={environment.online ? '在线' : '离线'} />
+            <Row label="IndexedDB 可用" value={environment.indexedDbAvailable ? '是' : '否'} />
             <Row label="设备内存 (deviceMemory)" value={environment.deviceMemory != null ? `${environment.deviceMemory} GB` : '不可用'} />
             <Row label="JS 堆已用" value={environment.jsHeapUsed != null ? formatBytes(environment.jsHeapUsed) : '不可用'} />
             <Row label="JS 堆上限" value={environment.jsHeapLimit != null ? formatBytes(environment.jsHeapLimit) : '不可用'} />

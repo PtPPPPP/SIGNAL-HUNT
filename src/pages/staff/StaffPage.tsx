@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { AdminButton, StatusBadge } from '../../components/ui/AdminUI';
 import { BrandMark } from '../../features/brand/BrandMark';
@@ -22,6 +22,9 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
   const [message, setMessage] = useState('');
   const [voidReason, setVoidReason] = useState('');
   const [confirmVoid, setConfirmVoid] = useState(false);
+  const [isRedeeming, setIsRedeeming] = useState(false);
+  const redeemingRef = useRef(false);
+  const redeemRequestIdRef = useRef(0);
 
   const hasActiveResult = Boolean(activeDraw);
 
@@ -57,15 +60,53 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
       return;
     }
 
-    const result = await redeemDrawRecord(db, activeDraw.record.id);
-
-    if (result.status === 'ALREADY_REDEEMED') {
-      setMessage(`该奖项已经完成兑奖，时间：${result.record.redeemedAt ?? '未知'}`);
-    } else {
-      setMessage(`兑奖成功，时间：${result.record.redeemedAt ?? '未知'}`);
+    if (redeemingRef.current) {
+      return;
     }
 
-    await refresh();
+    if (activeDraw.record.redeemed) {
+      setMessage(`该奖项已经完成兑奖，时间：${activeDraw.record.redeemedAt ?? '未知'}`);
+      return;
+    }
+
+    redeemingRef.current = true;
+    const requestId = redeemRequestIdRef.current + 1;
+    redeemRequestIdRef.current = requestId;
+    setIsRedeeming(true);
+
+    try {
+      const result = await redeemDrawRecord(db, activeDraw.record.id);
+
+      if (redeemRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      setActiveDraw((current) =>
+        current?.record.id === result.record.id
+          ? {
+              ...current,
+              record: result.record,
+            }
+          : current,
+      );
+
+      if (result.status === 'ALREADY_REDEEMED') {
+        setMessage(`该奖项已经完成兑奖，时间：${result.record.redeemedAt ?? '未知'}`);
+      } else {
+        setMessage(`兑奖成功，时间：${result.record.redeemedAt ?? '未知'}`);
+      }
+
+      await refresh();
+    } catch (error) {
+      if (redeemRequestIdRef.current === requestId) {
+        setMessage(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (redeemRequestIdRef.current === requestId) {
+        redeemingRef.current = false;
+        setIsRedeeming(false);
+      }
+    }
   }, [activeDraw, db, refresh]);
 
   const requestVoid = useCallback(() => {
@@ -186,8 +227,8 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
             </div>
           </div>
           <div className="staff-actions">
-          <AdminButton onClick={() => void confirmRedemption()} disabled={!activeDraw}>
-            确认兑奖
+          <AdminButton onClick={() => void confirmRedemption()} disabled={!activeDraw || isRedeeming}>
+            {isRedeeming ? '正在确认...' : '确认兑奖'}
           </AdminButton>
           <AdminButton
             variant="secondary"

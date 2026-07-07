@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
+import { installGlobalErrorCapture } from '../features/diagnostics/errorLog';
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { AdminDiagnosticsPage } from '../pages/admin/AdminDiagnosticsPage';
 import { AdminEventPage } from '../pages/admin/AdminEventPage';
@@ -10,6 +11,10 @@ import { AdminShell } from '../pages/admin/AdminShell';
 import { AdminSystemPage } from '../pages/admin/AdminSystemPage';
 import { DisplayPage } from '../pages/display/DisplayPage';
 import { StaffPage } from '../pages/staff/StaffPage';
+
+// Capture uncaught errors / unhandled rejections into the structured log so they
+// surface on /diagnostics for the whole kiosk session. Idempotent — runs once.
+installGlobalErrorCapture();
 
 export function App() {
   return (

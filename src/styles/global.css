@@ -1133,6 +1133,116 @@ button {
   align-self: start;
 }
 
+.probability-hero {
+  border-top: 3px solid var(--color-brand-red);
+}
+
+.probability-estimate-grid,
+.probability-diff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-3);
+}
+
+.probability-estimate-grid label,
+.probability-estimate-grid div,
+.probability-diff-grid div {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+}
+
+.probability-estimate-grid span,
+.probability-diff-grid span,
+.probability-row-note {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.probability-estimate-grid input,
+.probability-input input,
+.probability-smart-controls input,
+.probability-advanced input,
+.probability-table select {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+}
+
+.probability-mode-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.probability-table td {
+  vertical-align: top;
+}
+
+.probability-input {
+  display: grid;
+  grid-template-columns: minmax(5rem, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.probability-input span {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.probability-input em {
+  color: var(--color-text-secondary);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.probability-row-note {
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.probability-smart-controls,
+.probability-advanced {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 11rem;
+}
+
+.probability-advanced {
+  min-width: 12rem;
+}
+
+.probability-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.06);
+}
+
+.probability-action-bar .admin-message {
+  margin-left: auto;
+}
+
 .admin-filter-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1228,7 +1338,13 @@ button {
 
   .admin-filter-row,
   .admin-definition-grid,
-  .admin-form-row {
+  .admin-form-row,
+  .probability-estimate-grid,
+  .probability-diff-grid {
     grid-template-columns: 1fr;
+  }
+
+  .probability-action-bar {
+    position: static;
   }
 }

@@ -18,6 +18,8 @@ export type LogEntryType =
   | 'BACKUP_EXPORTED'
   | 'BACKUP_RESTORED'
   | 'EVENT_LIFECYCLE'
+  | 'UNCAUGHT_ERROR'
+  | 'UNHANDLED_REJECTION'
   | 'INFO';
 
 export interface LogEntry {
@@ -47,4 +49,40 @@ export function readStructuredLog(): LogEntry[] {
 
 export function clearStructuredLog(): void {
   entries.length = 0;
+}
+
+let globalErrorCaptureInstalled = false;
+
+/**
+ * Capture uncaught errors and unhandled promise rejections into the structured
+ * log so they are visible on /diagnostics. Idempotent: safe to call more than
+ * once. Installed once at app boot (see src/app/App.tsx) so the buffer covers
+ * the whole kiosk session, not just while /diagnostics happens to be open.
+ *
+ * Only errors that reach the GLOBAL handlers are captured here. Errors caught
+ * by try/catch in app code are not logged unless the app explicitly calls
+ * logStructured(...) (e.g. 'DATABASE_ERROR').
+ */
+export function installGlobalErrorCapture(): void {
+  if (globalErrorCaptureInstalled || typeof window === 'undefined') {
+    return;
+  }
+  globalErrorCaptureInstalled = true;
+
+  window.addEventListener('error', (event) => {
+    logStructured('UNCAUGHT_ERROR', {
+      message: event.message,
+      filename: event.filename,
+      line: event.lineno,
+      col: event.colno,
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    logStructured('UNHANDLED_REJECTION', {
+      message: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+    });
+  });
 }

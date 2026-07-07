@@ -81,6 +81,21 @@ http://127.0.0.1:5180/admin/system
 http://127.0.0.1:5180/staff
 ```
 
+### 看到旧内容？刷新与清缓存
+
+改了代码或 Logo，页面上却还是旧的，按顺序排查：
+
+1. **浏览器硬刷新**：`Ctrl + Shift + R`（或 `Ctrl + F5`），绕过缓存重新加载。注意区分：本项目工作人员退出快捷键是 `Ctrl + Shift + E`，浏览器硬刷新是 `Ctrl + Shift + R`，别按混。
+2. **重启 dev server**：在跑 `npm run dev` 的终端按 `Ctrl + C` 停掉，再 `npm run dev`。新增或重命名文件（尤其 `public/brand/` 下的 Logo、新增源码模块）时，Vite 的热更新偶尔不会自动跟上，重启最稳。
+3. **清 Vite 缓存**：少数情况 Vite 缓存了陈旧依赖，删掉 `node_modules/.vite` 后重启：
+
+   ```powershell
+   Remove-Item -Recurse -Force node_modules\.vite
+   npm run dev
+   ```
+
+4. **确认端口与地址**：终端应输出 `http://127.0.0.1:5180`，并以此地址访问（不要用 `localhost`，见上文 IPv6 坑）。若终端提示端口被占用并换了别的端口，多半是上一次的 dev server 还在后台跑——回到那个旧终端 `Ctrl + C` 停掉；或在 Windows 上用 `netstat -ano | findstr :5180` 找到占用进程的 PID，再 `taskkill /PID <PID> /F` 杀掉，然后重启。
+
 ## 页面说明
 
 | 页面 | 用途 |
@@ -88,7 +103,7 @@ http://127.0.0.1:5180/staff
 | `/display` | 展会大屏 / 触摸屏抽奖页面 |
 | `/admin/dashboard` | 展会控制中心首页：活动、库存、中奖节奏、最近记录 |
 | `/admin/prizes` | 设置奖项、库存、中奖权重、Probability Mode、Smart Pacing |
-| `/admin/pacing` | 查看所有奖项的中奖节奏状态 |
+| `/admin/pacing` | 抽奖概率与发放策略控制台，直接编辑百分比并应用到真实 weight |
 | `/admin/records` | 查看和筛选抽奖记录 |
 | `/admin/system` | 系统状态页 |
 | `/staff` | 工作人员兑奖、结束展示、作废记录 |
@@ -143,7 +158,7 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\pages\admin\AdminPrizesPage.tsx
 - Smart Pacing 配置
 - Live Preview 预览真实 effective weight
 
-### Prize Pacing
+### 抽奖概率与发放策略
 
 访问路径：
 
@@ -159,30 +174,31 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\pages\admin\AdminPacingPage.tsx
 
 功能：
 
-- 查看每个奖项的 Probability Mode
-- 查看 Expected / Actual
-- 查看 Effective Weight
-- 查看 Next Release
-- 查看 ON_PACE / AHEAD / BEHIND / LOCKED / CATCH_UP / DEPLETED 状态
+- 简单模式：直接输入每个奖项的中奖百分比，例如 `一等奖 1.0%`
+- 智能模式：配置均匀发放、大奖保护、最小中奖间隔和闭展前追赶
+- 高级模式：查看真实 Base Weight、Multiplier、Sensitivity 等算法参数
+- 自动平衡：锁定奖项保持不变，当前编辑奖项保持不变，其余未锁定奖项按原相对比例重新分配
+- 根据库存生成建议概率：只生成预览，必须点击“应用建议”后才进入当前配置
+- 库存风险：对比预计参与人数、配置概率和剩余库存，提示奖品是否可能不够
+- 保存并应用：把百分比转换为真实 `weight`，下一次尚未开始的抽奖使用新配置
 
 ### 调整中奖概率
 
 后台操作路径：
 
 ```text
-http://127.0.0.1:5180/admin/prizes
+http://127.0.0.1:5180/admin/pacing
 ```
 
 操作路径：
 
 ```text
 管理员后台
-→ Prize Management
-→ 编辑奖项
-→ Probability Strategy
-→ 选择 Probability Mode
-→ 修改 Base Weight 或 Smart Pacing 参数
-→ 保存奖品
+→ 抽奖概率与发放策略
+→ 简单模式
+→ 直接修改百分比
+→ 如合计不是 100%，点击 自动平衡
+→ 保存并应用
 ```
 
 相关源码绝对路径：
@@ -329,7 +345,9 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
 
 ## 怎么设置中奖概率
 
-固定概率由 `weight` 控制。Time Release / Smart Pacing 会先计算 `effectiveWeight`，真实抽奖使用的是有效权重。
+后台 `/admin/pacing` 使用百分比给运营人员编辑。保存时系统会把百分比转换为 `weight`，真实抽奖仍使用现有 secure random + effective weight。
+
+Time Release / Smart Pacing 会先计算 `effectiveWeight`，真实抽奖使用的是有效权重。
 
 公式：
 
@@ -337,7 +355,7 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
 某奖项中奖概率 = 该奖项 effectiveWeight / 所有可抽奖项 effectiveWeight 之和
 ```
 
-注意：在 `FIXED` 模式下，`effectiveWeight === weight`。`weight` 不是百分比，但你可以把总权重配成 100，这样更好理解。
+注意：在 `FIXED` 模式下，`effectiveWeight === weight`。新版后台会把总概率保存为合计 100 的 weight，因此普通运营人员不需要手动理解 Base Weight。
 
 例如：
 
@@ -368,17 +386,19 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
 后台操作路径：
 
 ```text
-http://127.0.0.1:5180/admin/prizes
+http://127.0.0.1:5180/admin/pacing
 ```
 
 操作步骤：
 
 ```text
-打开 /admin/prizes
-找到奖品编辑表单或 Prize JSON
-修改 Probability Mode / Base Weight / Smart Pacing 参数
-点击 保存奖品 或 导入 JSON
-下一次抽奖立即生效
+打开 /admin/pacing
+确认预计参与人数
+在简单模式中修改各奖项百分比
+确认合计概率为 100%
+查看预计中奖人数和库存风险
+点击 保存并应用
+下一次尚未开始的抽奖使用新配置
 ```
 
 对应源码绝对路径：
@@ -645,12 +665,31 @@ npm run build
 
 当前没有配置 `npm run test:e2e`。
 
-Phase 8B 新增可靠性命令：
+### 一键验证（Release Gate）
 
 ```bash
-npm run test:stress        # 压力与对抗性测试
-npm run burnin:short       # Burn-in 短模式（默认 5 分钟，可用 BURNIN_SECONDS 覆盖）
+npm run verify:quick     # lint + typecheck + 单元测试 + 生产构建（每次迭代）
+npm run verify:release   # verify:quick + 压力测试（发布前）
+npm run verify:onsite    # verify:release + 5 分钟 burn-in + preflight（开展前，在现场机器上跑）
+npm run preflight        # 静态发布自检（构建产物 / Logo / 离线 / 路由），需先 npm run build
 ```
+
+> 基线提示：`verify:*` 都会跑完整单元测试（含 `StaffPage.test.tsx`）。Phase 10B 期间该测试一度红（重复兑奖 UI 竞态，另一条工作流已修复并写入工作区），当前完整套件全绿：128 pass / 0 fail。gate 为严格模式 —— 任何单元测试变红都会在测试步骤失败，**不通过跳过失败用例换取绿灯**。
+
+可靠性命令：
+
+```bash
+npm run test:stress        # 压力与对抗性测试（5 个用例）
+npm run burnin:smoke       # Burn-in 冒烟，20 秒
+npm run burnin:short       # Burn-in 短模式，默认 5 分钟
+npm run burnin:full        # Burn-in 8 小时 soak（未真实跑满 8 小时不要声称通过）
+```
+
+完整的可靠性矩阵、stress 覆盖明细、burn-in 输出字段与退出条件见 [`docs/reliability.md`](docs/reliability.md)。
+
+### Windows / 中文 / UTF-8
+
+PowerShell 直接读中文文件可能显示乱码 —— 这是控制台编码问题，**不代表源文件损坏**。搜索中文内容请用 `rg`（ripgrep），Node 读文件显式传 `utf8`。给 npm 传环境变量不要用 bash 写法 `BURNIN_SECONDS=20 npm run ...`（PowerShell / cmd 不生效），改用 `$env:BURNIN_SECONDS=20; npm run burnin:short` 或模式脚本（`npm run burnin:smoke` 等）。详见 [`docs/reliability.md`](docs/reliability.md) §8。
 
 ## Phase 8B：活动生命周期
 
@@ -701,14 +740,22 @@ npm run test:stress
 ## Phase 8B：Burn-in 稳定性
 
 ```bash
-npm run burnin:short                          # 默认短模式 5 分钟
-BURNIN_SECONDS=20 npm run burnin:short        # 快速冒烟
-BURNIN_SECONDS=28800 npm run burnin:short     # 8 小时 soak（请真实运行后再声称通过）
+npm run burnin:smoke       # 20 秒冒烟（CI 风格快速检查）
+npm run burnin:short       # 默认短模式 5 分钟
+npm run burnin:full        # 8 小时 soak（未真实跑满不要声称通过）
 ```
 
-Burn-in 驱动真实 `commitPersistentDraw` + `clearActiveDrawSession` 循环，断言零错误、每次抽奖精确扣减一格库存、记录数与抽奖数一致。已**真实运行 15 秒冒烟**（约 8900 次抽奖，0 错误，库存账目精确）；**未**真实运行 5 分钟或 8 小时。
+自定义时长（跨平台，统一由 `node scripts/burnin.mjs` 处理）：
 
-> 内存说明：Burn-in 在合成速率（约 600 抽/秒）下进程堆会增长，主要来自**持久化 DrawRecord 的累积**（设计如此，并非泄漏）。真实展会节奏约每 10–30 秒一次抽奖，8 小时约数千条记录，远在容量内。长时间 soak 请同时监控内存与磁盘。
+```bash
+node scripts/burnin.mjs 60                     # 任意秒数
+$env:BURNIN_SECONDS=60; npm run burnin:short   # PowerShell
+BURNIN_SECONDS=60 npm run burnin:short         # bash / Git Bash
+```
+
+Burn-in 驱动真实 `commitPersistentDraw` + `clearActiveDrawSession` 循环；返回自描述报告，断言：零错误、`stoppedReason === 'duration'`、`recordCount === drawCount`、`inventoryDecrement === drawCount`、无负库存。运行结束打印 `[burn-in FINAL]` JSON（含目标/实际时长、`throughputDrawsPerSec`、起止时间、`passed`、`violations`），失败时读 `violations` 定位。基线：20 秒冒烟已通过（0 错误、账目精确，吞吐随机器而异、以运行报告为准）；**未**真实运行 5 分钟或 8 小时。
+
+> 内存说明：Burn-in 在合成速率（远高于真实展会节奏）下进程堆会增长，主要来自**持久化 DrawRecord 的累积**（设计如此，并非泄漏）。真实展会节奏约每 10–30 秒一次抽奖，8 小时约数千条记录，远在容量内。长时间 soak 请同时监控内存与磁盘。
 
 代码：`src/burn-in/burnInRunner.ts`、`src/burn-in/burnIn.test.ts`（默认排除出 `npm test`，避免拖慢单元测试）。
 
@@ -716,8 +763,9 @@ Burn-in 驱动真实 `commitPersistentDraw` + `clearActiveDrawSession` 循环，
 
 ### 展前检查
 
+- 运行 `npm run preflight`（静态自检：构建产物 / Logo / 离线 / 路由），再打开 `/diagnostics` 的「现场自检」面板确认显示「✅ 就绪」（数据库可访问 / 已激活活动 / 至少一个有库存奖项 / 库存一致 / 无未结束会话）。
 - 在 `/admin/event` 确认目标活动为 `ACTIVE`（或先创建再激活）。
-- 在 `/admin/prizes` 确认奖项、库存、权重正确（权重非百分比，是相对比例）。
+- 在 `/admin/pacing` 确认奖项概率合计 100%，库存风险可接受，并点击“保存并应用”。
 - 把 Logo 放到 `public/brand/quantum-design-logo.png`。
 - 确认展示机分辨率（主目标 1920×1080，支持 2560×1440 / 3840×2160）。
 - 在 `/admin/system` 点击「下载完整备份」做一份展前基准备份。

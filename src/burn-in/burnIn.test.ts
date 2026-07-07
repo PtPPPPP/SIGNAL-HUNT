@@ -102,14 +102,25 @@ describe('burn-in runner', () => {
         '[burn-in FINAL]\n' +
           JSON.stringify(
             {
-              durationSeconds: Number((report.durationMs / 1000).toFixed(1)),
+              mode: `BURNIN_SECONDS=${BURNIN_SECONDS}`,
+              startedAt: report.startedAtIso,
+              endedAt: report.endedAtIso,
+              durationTargetSeconds: Number((report.durationTargetMs / 1000).toFixed(1)),
+              durationActualSeconds: Number((report.durationMs / 1000).toFixed(1)),
               cycles: report.cycles,
               draws: report.drawCount,
+              success: report.successCount,
               errors: report.errorCount,
+              errorSamples: report.errors,
               stoppedReason: report.stoppedReason,
               records: report.recordCount,
-              inventoryDecrement: report.initialInventorySum - report.remainingInventorySum,
+              inventoryDecrement: report.inventoryDecrement,
+              remainingInventorySum: report.remainingInventorySum,
+              throughputDrawsPerSec: Number(report.throughputDrawsPerSec.toFixed(1)),
               heapDelta: heapDeltaMb,
+              passed: report.passed,
+              violations: report.violations,
+              config: report.config,
             },
             null,
             2,
@@ -124,6 +135,12 @@ describe('burn-in runner', () => {
       // produces exactly one durable record.
       expect(report.initialInventorySum - report.remainingInventorySum).toBe(report.drawCount);
       expect(report.recordCount).toBe(report.drawCount);
+      // Inventory must never go negative (aggregate or per-prize — the per-prize
+      // scan lives in the runner's computeViolations).
+      expect(report.remainingInventorySum).toBeGreaterThanOrEqual(0);
+      // The runner's self-describing verdict must agree: if this fails, read
+      // `report.violations` in the FINAL print above for the precise cause.
+      expect(report.passed).toBe(true);
     },
     (BURNIN_SECONDS + 60) * 1000,
   );

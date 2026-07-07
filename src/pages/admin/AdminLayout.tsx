@@ -20,7 +20,7 @@ const navGroups = [
     items: [
       { to: '/admin/event', label: 'Activities', icon: 'A' },
       { to: '/admin/prizes', label: 'Prizes', icon: 'P' },
-      { to: '/admin/pacing', label: 'Prize Pacing', icon: 'W' },
+      { to: '/admin/pacing', label: '概率策略', icon: '%' },
       { to: '/admin/records', label: 'Records', icon: 'R' },
     ],
   },
