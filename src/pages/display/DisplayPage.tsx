@@ -16,10 +16,10 @@ import {
   createInitialDisplayState,
   getDisplayCopy,
   isInteractionLocked,
-  transitionDisplayState,
   type DisplayEvent,
   type DisplayState,
 } from '../../features/display/displayStateMachine';
+import { applyDisplayEvent } from '../../features/display/displayTransition';
 import { POST_COMMIT_TIMELINE_STEPS } from '../../features/display/displayTimeline';
 import { BrandMark } from '../../features/brand/BrandMark';
 import { SignalCanvas } from '../../visual/signal-engine/SignalCanvas';
@@ -416,11 +416,9 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
 }
 
 function applyEvent(state: DisplayState, event: DisplayEvent): DisplayState {
-  try {
-    return transitionDisplayState(state, event);
-  } catch {
-    return state;
-  }
+  return applyDisplayEvent(state, event, {
+    onError: (details) => log('STATE_TRANSITION_ERROR', details),
+  });
 }
 
 function clearScheduledTimeline(timeoutIds: number[]): void {

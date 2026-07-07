@@ -1,4 +1,5 @@
 import type { DrawRecord, Prize } from '../domain/draw/types';
+import { validatePrize, validatePrizes } from '../domain/draw/prizeValidation';
 import type { SignalHuntDatabase } from './database';
 
 export type DashboardSummary = {
@@ -18,13 +19,15 @@ export async function listPrizes(db: SignalHuntDatabase): Promise<Prize[]> {
 }
 
 export async function savePrize(db: SignalHuntDatabase, prize: Prize): Promise<void> {
-  await db.prizes.put(prize);
+  await db.prizes.put(validatePrize(prize));
 }
 
 export async function replacePrizes(db: SignalHuntDatabase, prizes: readonly Prize[]): Promise<void> {
+  const validPrizes = validatePrizes(prizes);
+
   await db.transaction('rw', db.prizes, async () => {
     await db.prizes.clear();
-    await db.prizes.bulkPut([...prizes]);
+    await db.prizes.bulkPut(validPrizes);
   });
 }
 

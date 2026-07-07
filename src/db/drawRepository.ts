@@ -3,12 +3,39 @@ import type { CommitDrawResult, Event, Prize } from '../domain/draw/types';
 import type { DrawRecord, DrawSession } from '../domain/draw/types';
 import type { SignalHuntDatabase } from './database';
 
+export type DrawRepositoryErrorCode =
+  | 'ACTIVE_DRAW_EXISTS'
+  | 'ACTIVE_DRAW_NOT_FOUND'
+  | 'DRAW_RECORD_NOT_FOUND'
+  | 'DRAW_ALREADY_REDEEMED'
+  | 'VOID_REASON_REQUIRED';
+
+export class DrawRepositoryError extends Error {
+  constructor(
+    public readonly code: DrawRepositoryErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'DrawRepositoryError';
+  }
+}
+
 export type CommitPersistentDrawInput = {
   eventId: string;
   participantId?: string;
   now?: () => string;
   random?: () => number;
   createId?: (prefix: 'session' | 'record') => string;
+};
+
+export type RedeemDrawResult =
+  | { status: 'REDEEMED'; record: DrawRecord }
+  | { status: 'ALREADY_REDEEMED'; record: DrawRecord };
+
+export type VoidActiveDrawInput = {
+  eventId: string;
+  reason: string;
+  now?: () => string;
 };
 
 export async function seedEvent(db: SignalHuntDatabase, event: Event): Promise<void> {
@@ -30,10 +57,20 @@ export async function commitPersistentDraw(
       throw new Error('Event was not found.');
     }
 
-    const prizes = await db.prizes.toArray();
+    const activeSession = await db.drawSessions
+      .where('[eventId+status]')
+      .equals([input.eventId, 'COMMITTED'])
+      .first();
+
+    if (activeSession) {
+      throw new DrawRepositoryError('ACTIVE_DRAW_EXISTS', 'An active draw already exists for this event.');
+    }
+
+    const [prizes, records] = await Promise.all([db.prizes.toArray(), db.drawRecords.toArray()]);
     const committed = commitDraw({
       event,
       prizes,
+      records,
       participantId: input.participantId,
       now: input.now,
       random: input.random,
@@ -118,5 +155,84 @@ export async function clearActiveDrawSession(db: SignalHuntDatabase, eventId: st
       .toArray();
 
     await Promise.all(activeSessions.map((session: DrawSession) => db.drawSessions.delete(session.id)));
+  });
+}
+
+export async function redeemDrawRecord(
+  db: SignalHuntDatabase,
+  recordId: string,
+  now: () => string = () => new Date().toISOString(),
+): Promise<RedeemDrawResult> {
+  return db.transaction('rw', db.drawRecords, async () => {
+    const record = await db.drawRecords.get(recordId);
+
+    if (!record) {
+      throw new DrawRepositoryError('DRAW_RECORD_NOT_FOUND', 'Draw record was not found.');
+    }
+
+    if (record.redeemed) {
+      return {
+        status: 'ALREADY_REDEEMED',
+        record,
+      };
+    }
+
+    const redeemedRecord: DrawRecord = {
+      ...record,
+      redeemed: true,
+      redeemedAt: now(),
+      status: 'REDEEMED',
+    };
+
+    await db.drawRecords.put(redeemedRecord);
+
+    return {
+      status: 'REDEEMED',
+      record: redeemedRecord,
+    };
+  });
+}
+
+export async function voidActiveDraw(
+  db: SignalHuntDatabase,
+  input: VoidActiveDrawInput,
+): Promise<{ record: DrawRecord }> {
+  const reason = input.reason.trim();
+
+  if (!reason) {
+    throw new DrawRepositoryError('VOID_REASON_REQUIRED', 'Void reason is required.');
+  }
+
+  return db.transaction('rw', db.drawSessions, db.drawRecords, async () => {
+    const session = await db.drawSessions
+      .where('[eventId+status]')
+      .equals([input.eventId, 'COMMITTED'])
+      .first();
+
+    if (!session) {
+      throw new DrawRepositoryError('ACTIVE_DRAW_NOT_FOUND', 'Active draw was not found.');
+    }
+
+    const record = await db.drawRecords.get(session.committedRecordId);
+
+    if (!record) {
+      throw new DrawRepositoryError('DRAW_RECORD_NOT_FOUND', 'Draw record was not found.');
+    }
+
+    if (record.redeemed) {
+      throw new DrawRepositoryError('DRAW_ALREADY_REDEEMED', 'Redeemed draw cannot be voided.');
+    }
+
+    const voidedRecord: DrawRecord = {
+      ...record,
+      status: 'VOIDED',
+      voidedAt: input.now?.() ?? new Date().toISOString(),
+      voidReason: reason,
+    };
+
+    await db.drawRecords.put(voidedRecord);
+    await db.drawSessions.delete(session.id);
+
+    return { record: voidedRecord };
   });
 }

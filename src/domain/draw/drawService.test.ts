@@ -57,6 +57,24 @@ describe('draw domain service', () => {
     expect(second.id).toBe('second');
   });
 
+  it('excludes a pacing-locked prize from the active draw pool', () => {
+    const prizes = [
+      createPrize({
+        id: 'locked',
+        probabilityMode: 'TIME_RELEASE',
+        pacing: { releaseSchedule: [{ time: '14:00', maxCumulativeWins: 1 }] },
+      }),
+      createPrize({ id: 'available' }),
+    ];
+
+    const pool = getActivePrizePool(prizes, {
+      event: activeEvent,
+      now: () => '2026-07-06T13:00:00+08:00',
+    });
+
+    expect(pool.map((prize) => prize.id)).toEqual(['available']);
+  });
+
   it('creates normalized random values from secure random integers', () => {
     const secureRandom = createSeededSecureRandom(() => 0xffffffff);
 

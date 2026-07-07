@@ -1,9 +1,18 @@
 import type { CommitDrawInput, CommitDrawResult, Prize } from './types';
+import { getEffectivePrizeWeight, type PrizePacingInput } from './prizePacing';
 
 const UINT32_RANGE = 0x100000000;
 
-export function getActivePrizePool(prizes: readonly Prize[]): Prize[] {
-  return prizes.filter((prize) => prize.enabled && prize.inventoryRemaining > 0 && prize.weight > 0);
+export function getActivePrizePool(
+  prizes: readonly Prize[],
+  pacingContext: Omit<PrizePacingInput, 'prize'> = {},
+): Prize[] {
+  return prizes.filter(
+    (prize) =>
+      prize.enabled &&
+      prize.inventoryRemaining > 0 &&
+      getEffectivePrizeWeight({ ...pacingContext, prize }) > 0,
+  );
 }
 
 export function createSecureRandom(): () => number {
@@ -26,14 +35,21 @@ export function createSeededSecureRandom(nextUint32: () => number): () => number
   };
 }
 
-export function selectWeightedPrize(prizes: readonly Prize[], random: () => number = createSecureRandom()): Prize {
-  const activePrizes = getActivePrizePool(prizes);
+export function selectWeightedPrize(
+  prizes: readonly Prize[],
+  random: () => number = createSecureRandom(),
+  pacingContext: Omit<PrizePacingInput, 'prize'> = {},
+): Prize {
+  const activePrizes = getActivePrizePool(prizes, pacingContext);
 
   if (activePrizes.length === 0) {
     throw new Error('No active prize is available.');
   }
 
-  const totalWeight = activePrizes.reduce((sum, prize) => sum + prize.weight, 0);
+  const weightsByPrizeId = new Map(
+    activePrizes.map((prize) => [prize.id, getEffectivePrizeWeight({ ...pacingContext, prize })]),
+  );
+  const totalWeight = activePrizes.reduce((sum, prize) => sum + (weightsByPrizeId.get(prize.id) ?? 0), 0);
   const randomValue = random();
 
   if (randomValue < 0 || randomValue >= 1) {
@@ -43,7 +59,7 @@ export function selectWeightedPrize(prizes: readonly Prize[], random: () => numb
   let cursor = randomValue * totalWeight;
 
   for (const prize of activePrizes) {
-    cursor -= prize.weight;
+    cursor -= weightsByPrizeId.get(prize.id) ?? 0;
     if (cursor < 0) {
       return prize;
     }
@@ -60,7 +76,11 @@ export function commitDraw(input: CommitDrawInput): CommitDrawResult {
   const now = input.now ?? (() => new Date().toISOString());
   const createId = input.createId ?? createBrowserId;
   const committedAt = now();
-  const prize = selectWeightedPrize(input.prizes, input.random);
+  const prize = selectWeightedPrize(input.prizes, input.random, {
+    event: input.event,
+    records: input.records,
+    now: () => committedAt,
+  });
   const sessionId = createId('session');
   const recordId = createId('record');
 

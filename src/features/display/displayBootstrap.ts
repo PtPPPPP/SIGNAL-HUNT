@@ -19,7 +19,7 @@ function createDemoPrizes(): Prize[] {
       level: 1,
       inventoryTotal: 1,
       inventoryRemaining: 1,
-      weight: 1,
+      weight: 5,
       enabled: true,
     },
     {
@@ -29,7 +29,7 @@ function createDemoPrizes(): Prize[] {
       level: 2,
       inventoryTotal: 5,
       inventoryRemaining: 5,
-      weight: 4,
+      weight: 25,
       enabled: true,
     },
     {
@@ -39,17 +39,7 @@ function createDemoPrizes(): Prize[] {
       level: 3,
       inventoryTotal: 20,
       inventoryRemaining: 20,
-      weight: 9,
-      enabled: true,
-    },
-    {
-      idPrefix: 'demo-thanks',
-      name: '谢谢参与',
-      shortName: '谢谢参与',
-      level: 9,
-      inventoryTotal: 999,
-      inventoryRemaining: 999,
-      weight: 86,
+      weight: 70,
       enabled: true,
     },
   ];

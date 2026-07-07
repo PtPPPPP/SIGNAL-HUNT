@@ -24,6 +24,26 @@ export interface Prize {
   weight: number;
   enabled: boolean;
   imageUrl?: string;
+  probabilityMode?: PrizeProbabilityMode;
+  pacing?: PrizePacingConfig;
+}
+
+export type PrizeProbabilityMode = 'FIXED' | 'TIME_RELEASE' | 'SMART_PACING';
+
+export interface PrizeReleasePoint {
+  time: string;
+  maxCumulativeWins: number;
+}
+
+export interface PrizePacingConfig {
+  minMultiplier?: number;
+  maxMultiplier?: number;
+  sensitivity?: number;
+  minIntervalMinutes?: number;
+  catchUpEnabled?: boolean;
+  catchUpStartBeforeEndMinutes?: number;
+  catchUpMaxMultiplier?: number;
+  releaseSchedule?: PrizeReleasePoint[];
 }
 
 export interface DrawSession {
@@ -47,12 +67,15 @@ export interface DrawRecord {
   revealedAt?: string;
   redeemed: boolean;
   redeemedAt?: string;
+  voidedAt?: string;
+  voidReason?: string;
   status: 'COMMITTED' | 'REVEALED' | 'REDEEMED' | 'VOIDED';
 }
 
 export interface CommitDrawInput {
   event: Event;
   prizes: readonly Prize[];
+  records?: readonly DrawRecord[];
   participantId?: string;
   now?: () => string;
   random?: () => number;

@@ -45,6 +45,11 @@ describe('admin repository', () => {
     await expect(listPrizes(db)).resolves.toMatchObject([{ id: 'first' }, { id: 'second' }]);
   });
 
+  it('rejects invalid prizes at the database write boundary', async () => {
+    await expect(savePrize(db, { ...prize, id: 'bad', inventoryRemaining: -1 })).rejects.toThrow('奖品数据无效');
+    await expect(db.prizes.toArray()).resolves.toHaveLength(0);
+  });
+
   it('returns dashboard summary from IndexedDB tables', async () => {
     await seedEvent(db, event);
     await seedPrizes(db, [prize, { ...prize, id: 'empty', inventoryRemaining: 0 }]);

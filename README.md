@@ -27,7 +27,7 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\README.md
 
 ## 当前状态
 
-当前已经完成到 Phase 8A：现场核心可靠性加固。
+当前已经完成到 Phase 9：后台控制中心重构与 Smart Prize Pacing 接入。
 
 已经具备：
 
@@ -39,6 +39,10 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\README.md
 - 刷新后恢复同一中奖结果
 - 后台奖项管理
 - JSON 导入奖项
+- 后台控制中心 UI
+- Prize Pacing 独立页面
+- Fixed Weight / Time Release / Smart Pacing
+- 真实抽奖使用 effective weight
 - 工作人员确认兑奖
 - 重复兑奖拦截
 - 作废未兑奖记录
@@ -82,11 +86,133 @@ http://127.0.0.1:5180/staff
 | 页面 | 用途 |
 | --- | --- |
 | `/display` | 展会大屏 / 触摸屏抽奖页面 |
-| `/admin/dashboard` | 后台数据摘要 |
-| `/admin/prizes` | 设置奖项、库存、中奖权重 |
-| `/admin/records` | 查看抽奖记录 |
+| `/admin/dashboard` | 展会控制中心首页：活动、库存、中奖节奏、最近记录 |
+| `/admin/prizes` | 设置奖项、库存、中奖权重、Probability Mode、Smart Pacing |
+| `/admin/pacing` | 查看所有奖项的中奖节奏状态 |
+| `/admin/records` | 查看和筛选抽奖记录 |
 | `/admin/system` | 系统状态页 |
 | `/staff` | 工作人员兑奖、结束展示、作废记录 |
+
+## 后台管理
+
+### Dashboard
+
+访问路径：
+
+```text
+http://127.0.0.1:5180/admin/dashboard
+```
+
+页面源码绝对路径：
+
+```text
+D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\pages\admin\AdminDashboardPage.tsx
+```
+
+功能：
+
+- 当前活动状态
+- 今日参与 / 已中奖 / 已兑奖 / 剩余库存
+- Prize Inventory Overview
+- Prize Pacing Overview
+- Prize Release Pace 图表
+- 最近抽奖记录
+
+### 奖品管理
+
+访问路径：
+
+```text
+http://127.0.0.1:5180/admin/prizes
+```
+
+页面源码绝对路径：
+
+```text
+D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\pages\admin\AdminPrizesPage.tsx
+```
+
+功能：
+
+- 新增 / 编辑奖品
+- JSON 导入 / 导出
+- 库存配置
+- Base Weight 配置
+- Probability Mode 配置
+- Time Release 配置
+- Smart Pacing 配置
+- Live Preview 预览真实 effective weight
+
+### Prize Pacing
+
+访问路径：
+
+```text
+http://127.0.0.1:5180/admin/pacing
+```
+
+页面源码绝对路径：
+
+```text
+D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\pages\admin\AdminPacingPage.tsx
+```
+
+功能：
+
+- 查看每个奖项的 Probability Mode
+- 查看 Expected / Actual
+- 查看 Effective Weight
+- 查看 Next Release
+- 查看 ON_PACE / AHEAD / BEHIND / LOCKED / CATCH_UP / DEPLETED 状态
+
+### 调整中奖概率
+
+后台操作路径：
+
+```text
+http://127.0.0.1:5180/admin/prizes
+```
+
+操作路径：
+
+```text
+管理员后台
+→ Prize Management
+→ 编辑奖项
+→ Probability Strategy
+→ 选择 Probability Mode
+→ 修改 Base Weight 或 Smart Pacing 参数
+→ 保存奖品
+```
+
+相关源码绝对路径：
+
+```text
+D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\pages\admin\AdminPrizesPage.tsx
+D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizePacing.ts
+D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\drawService.ts
+D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
+```
+
+### Smart Prize Pacing
+
+当前支持三种模式：
+
+| 模式 | 含义 |
+| --- | --- |
+| `FIXED` | 固定权重。真实抽奖直接使用 `weight`。 |
+| `TIME_RELEASE` | 按释放时间控制累计最多中奖数。未释放时 effective weight 为 0。 |
+| `SMART_PACING` | 根据展会进度、实际中奖数、最小间隔、释放节点和追赶模式计算 effective weight。 |
+
+真实中奖仍使用：
+
+```text
+secure random
++ active prize pool
++ effective weight
+```
+
+不是后台单独显示一套假倍率。
 
 ## 怎么设置奖项
 
@@ -137,7 +263,8 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
     "inventoryTotal": 1,
     "inventoryRemaining": 1,
     "weight": 5,
-    "enabled": true
+    "enabled": true,
+    "probabilityMode": "FIXED"
   },
   {
     "id": "prize-second",
@@ -147,7 +274,8 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
     "inventoryTotal": 5,
     "inventoryRemaining": 5,
     "weight": 25,
-    "enabled": true
+    "enabled": true,
+    "probabilityMode": "FIXED"
   },
   {
     "id": "prize-third",
@@ -157,7 +285,8 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
     "inventoryTotal": 20,
     "inventoryRemaining": 20,
     "weight": 70,
-    "enabled": true
+    "enabled": true,
+    "probabilityMode": "FIXED"
   }
 ]
 ```
@@ -182,6 +311,8 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
 | `inventoryRemaining` | 剩余库存 |
 | `weight` | 中奖权重，用来控制概率 |
 | `enabled` | 是否启用该奖项 |
+| `probabilityMode` | 可选，`FIXED` / `TIME_RELEASE` / `SMART_PACING` |
+| `pacing` | 可选，Time Release / Smart Pacing 参数 |
 | `imageUrl` | 可选字段，目前不是必填 |
 
 校验规则：
@@ -198,15 +329,15 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\prizeValidation.ts
 
 ## 怎么设置中奖概率
 
-中奖概率由 `weight` 控制。
+固定概率由 `weight` 控制。Time Release / Smart Pacing 会先计算 `effectiveWeight`，真实抽奖使用的是有效权重。
 
 公式：
 
 ```text
-某奖项中奖概率 = 该奖项 weight / 所有可抽奖项 weight 之和
+某奖项中奖概率 = 该奖项 effectiveWeight / 所有可抽奖项 effectiveWeight 之和
 ```
 
-注意：`weight` 不是百分比，但你可以把总权重配成 100，这样更好理解。
+注意：在 `FIXED` 模式下，`effectiveWeight === weight`。`weight` 不是百分比，但你可以把总权重配成 100，这样更好理解。
 
 例如：
 
@@ -245,7 +376,7 @@ http://127.0.0.1:5180/admin/prizes
 ```text
 打开 /admin/prizes
 找到奖品编辑表单或 Prize JSON
-修改 weight
+修改 Probability Mode / Base Weight / Smart Pacing 参数
 点击 保存奖品 或 导入 JSON
 下一次抽奖立即生效
 ```
@@ -270,6 +401,7 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\domain\draw\drawService.ts
 selectWeightedPrize
 getActivePrizePool
 commitDraw
+calculatePrizePacing
 ```
 
 持久化抽奖提交绝对路径：
@@ -368,7 +500,7 @@ crypto.getRandomValues()
 ```text
 enabled === true
 inventoryRemaining > 0
-weight > 0
+effectiveWeight > 0
 ```
 
 ## 工作人员兑奖
@@ -482,7 +614,7 @@ D:\Program\snn\vibe-coding\SIGNAL-HUNT\src\visual
 Logo 文件应放在：
 
 ```text
-D:\Program\snn\vibe-coding\SIGNAL-HUNT\public\brand\logo.png
+D:\Program\snn\vibe-coding\SIGNAL-HUNT\public\brand\quantum-design-logo.png
 ```
 
 Logo 路径常量：
@@ -512,6 +644,119 @@ npm run build
 ```
 
 当前没有配置 `npm run test:e2e`。
+
+Phase 8B 新增可靠性命令：
+
+```bash
+npm run test:stress        # 压力与对抗性测试
+npm run burnin:short       # Burn-in 短模式（默认 5 分钟，可用 BURNIN_SECONDS 覆盖）
+```
+
+## Phase 8B：活动生命周期
+
+活动生命周期在 `/admin/event` 管理。状态：`DRAFT` / `ACTIVE` / `PAUSED` / `ENDED`。
+
+- 创建活动默认进入「草稿」，字段：名称、代码、可选开始/结束时间。
+- 激活时同一终端只允许一个 `ACTIVE` 活动；若已有激活活动，会要求确认后暂停旧活动（不会静默覆盖）。
+- `PAUSED` 时展示页进入暂停态，不能开始新抽奖，但已提交的中奖会话仍可恢复。
+- `ENDED` 后禁止新抽奖，历史记录、库存快照、统计全部保留，不删除任何数据。
+- 相关代码：`src/db/eventRepository.ts`、`src/domain/draw/eventValidation.ts`、`src/pages/admin/AdminEventPage.tsx`。
+
+## Phase 8B：Demo Seed 隔离
+
+`ensureDemoSeed` 在没有活动时自动创建演示活动与默认奖品，开发方便，但对正式展会危险。现在通过环境变量 `VITE_ENABLE_DEMO_SEED` 控制：
+
+| 取值 | 行为 |
+| --- | --- |
+| `true` | 允许自动生成演示数据（即使生产构建） |
+| `false` | 禁止自动生成（即使开发/测试），用于演练空库路径 |
+| 未设置 | 开发/测试自动生成；生产构建不生成 |
+
+生产构建（`npm run build` / `npm run preview`）默认**不会**因为空库自动生成假奖品，展示页会显示「尚未配置活动，请进入管理员后台创建活动」。开发服务器（`npm run dev`）默认仍会生成，便于本地体验。
+
+显式切换示例（PowerShell）：`$env:VITE_ENABLE_DEMO_SEED='false'; npm run dev`。
+
+## Phase 8B：完整备份与恢复
+
+在 `/admin/system` 操作完整备份（包含活动、奖项、抽奖记录、抽奖会话）。
+
+- **导出**：点击「下载完整备份」生成 `signal-hunt-backup-YYYYMMDD-HHmm.json`。
+- **恢复**：粘贴备份 JSON →「解析并预览」展示版本与各表数量 →「恢复备份」（二次确认）。
+- **原子性**：恢复在单个 Dexie 事务内清空并重写四张表；中途失败 IndexedDB 自动回滚，不会留下半套数据。
+- **恢复前快照**：每次恢复前自动生成一次回滚快照，可用「回滚到恢复前」还原。
+- 备份格式：`signal-hunt-backup` v1。代码：`src/features/admin/backupRestore.ts`。
+
+## Phase 8B：诊断页
+
+`/diagnostics` 仅供工作人员，展示：App 版本 / 构建模式 / 当前路由、视口 / DPR / 在线状态 / User-Agent / 内存、数据库状态与各表计数、当前活动与未结束会话、FPS / Canvas / WebGL / 减弱动效、存储用量配额、近期结构化事件（内存，最多 100 条）。错误日志代码：`src/features/diagnostics/errorLog.ts`。
+
+## Phase 8B：压力测试
+
+```bash
+npm run test:stress
+```
+
+覆盖：500 次连续抽奖（无重复活跃会话、库存不为负、记录数精确）、10 次并发点击（仅一次抽奖、库存只扣一次）、刷新恢复（SCANNING/SEARCHING/RESULT 三阶段恢复同一结果且不重抽）、离线（`navigator.onLine=false` 下抽奖与恢复正常）、库存耗尽（奖池空时报错且记录保留）。代码：`src/stress/drawStress.test.ts`。
+
+## Phase 8B：Burn-in 稳定性
+
+```bash
+npm run burnin:short                          # 默认短模式 5 分钟
+BURNIN_SECONDS=20 npm run burnin:short        # 快速冒烟
+BURNIN_SECONDS=28800 npm run burnin:short     # 8 小时 soak（请真实运行后再声称通过）
+```
+
+Burn-in 驱动真实 `commitPersistentDraw` + `clearActiveDrawSession` 循环，断言零错误、每次抽奖精确扣减一格库存、记录数与抽奖数一致。已**真实运行 15 秒冒烟**（约 8900 次抽奖，0 错误，库存账目精确）；**未**真实运行 5 分钟或 8 小时。
+
+> 内存说明：Burn-in 在合成速率（约 600 抽/秒）下进程堆会增长，主要来自**持久化 DrawRecord 的累积**（设计如此，并非泄漏）。真实展会节奏约每 10–30 秒一次抽奖，8 小时约数千条记录，远在容量内。长时间 soak 请同时监控内存与磁盘。
+
+代码：`src/burn-in/burnInRunner.ts`、`src/burn-in/burnIn.test.ts`（默认排除出 `npm test`，避免拖慢单元测试）。
+
+## 展会现场运行
+
+### 展前检查
+
+- 在 `/admin/event` 确认目标活动为 `ACTIVE`（或先创建再激活）。
+- 在 `/admin/prizes` 确认奖项、库存、权重正确（权重非百分比，是相对比例）。
+- 把 Logo 放到 `public/brand/quantum-design-logo.png`。
+- 确认展示机分辨率（主目标 1920×1080，支持 2560×1440 / 3840×2160）。
+- 在 `/admin/system` 点击「下载完整备份」做一份展前基准备份。
+- 确认 `VITE_ENABLE_DEMO_SEED` 在生产构建中未设为 `true`（默认即可）。
+
+### 开展
+
+1. 启动应用（`npm run build` 后托管，或现场指定的 kiosk 启动方式）。
+2. 打开 `/admin/event` 激活活动。
+3. 打开展示页 `/display`，进入全屏 Kiosk 模式。
+4. 在 `/diagnostics` 快速核对 FPS、数据库计数、当前活动。
+
+### 中途异常
+
+- **展示页异常 / 结果错乱**：工作人员在 `/staff` 点「结束当前结果并返回待机」，或快捷键 `Ctrl+Shift+E`。
+- **怀疑数据异常**：打开 `/diagnostics` 查看数据库状态与近期结构化事件。
+- **需要临时停抽**：在 `/admin/event` 把活动切到 `PAUSED`；展示页下次获得焦点或刷新后进入暂停态。恢复需重新激活并刷新展示页。
+- **崩溃 / 断电**：直接重启打开 `/display`，系统会恢复已提交但未结束的同一中奖结果，不会重抽。
+
+### 收展
+
+1. 在 `/admin/event` 把活动切到 `ENDED`（历史记录与库存快照保留）。
+2. 在 `/admin/records` 核对抽奖记录。
+3. 在 `/admin/system` 点击「下载完整备份」导出当日完整数据存档。
+
+## 现场恢复审计矩阵
+
+| 故障 | 当前行为 | 覆盖测试 / 诊断 |
+| --- | --- | --- |
+| 抽奖 commit 后浏览器崩溃 | `DrawRecord`/`DrawSession` 已在提交事务内持久化；重启 `recoverCommittedDraw` 恢复同一结果 | `drawRepository.test`、`DisplayPage.lifecycle` |
+| RESULT 页面机器重启 | 启动读取已提交会话进入 `RESULT`，永久停留，不重抽 | `DisplayPage.test`（boot 恢复） |
+| 数据库为空（生产） | 不自动生成演示数据；展示页显示「尚未配置活动」 | `displayBootstrap.gating`、`DisplayPage.lifecycle` |
+| 活动 PAUSED | 展示页进入暂停态、禁止新抽奖；已提交会话保留可恢复 | `DisplayPage.lifecycle`、`eventRepository.test` |
+| 库存全部耗尽 | 奖池为空，提交抛「No active prize」，展示页进入 ERROR | `drawStress`（exhausts inventory） |
+| Backup restore 失败 | 写入前 Zod 校验；单事务原子回滚；恢复前自动快照可回滚 | `backupRestore.test`（atomic / rollback） |
+| Canvas 初始化失败 | `SignalCanvas` 在 `getContext` 为 null 时降级；展示页仍可抽奖（视觉降级） | `DisplayPage.canvas.test` |
+| 网络断开 | 抽奖仅依赖 IndexedDB + `crypto.getRandomValues`，不触网 | `drawStress`（offline） |
+
+> 本项目当前为纯浏览器原型，**尚未引入 Electron**。因此「App 重启」等于浏览器/标签页重载，由启动恢复覆盖；桌面级进程重启（含独立存储）尚未验证。
 
 ## License
 

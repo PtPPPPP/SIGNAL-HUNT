@@ -1,27 +1,40 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { AdminButton, StatusBadge } from '../../components/ui/AdminUI';
 import { BrandMark } from '../../features/brand/BrandMark';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
-import { clearActiveDrawSession, getActiveEvent, recoverCommittedDraw } from '../../db/drawRepository';
+import {
+  clearActiveDrawSession,
+  getActiveEvent,
+  recoverCommittedDraw,
+  redeemDrawRecord,
+  voidActiveDraw,
+  type DrawRepositoryError,
+} from '../../db/drawRepository';
+import type { CommitDrawResult } from '../../domain/draw/types';
 
 type StaffPageProps = {
   db?: SignalHuntDatabase;
 };
 
 export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
-  const [hasActiveResult, setHasActiveResult] = useState(false);
+  const [activeDraw, setActiveDraw] = useState<CommitDrawResult | undefined>(undefined);
   const [message, setMessage] = useState('');
+  const [voidReason, setVoidReason] = useState('');
+  const [confirmVoid, setConfirmVoid] = useState(false);
+
+  const hasActiveResult = Boolean(activeDraw);
 
   const refresh = useCallback(async () => {
     const event = await getActiveEvent(db);
 
     if (!event) {
-      setHasActiveResult(false);
+      setActiveDraw(undefined);
       return;
     }
 
     const recovered = await recoverCommittedDraw(db, event.id);
-    setHasActiveResult(Boolean(recovered));
+    setActiveDraw(recovered);
   }, [db]);
 
   const endCurrentResult = useCallback(async () => {
@@ -34,8 +47,56 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
 
     await clearActiveDrawSession(db, event.id);
     setMessage('已结束当前结果。展示页将在下次进入时回到待机。');
+    setConfirmVoid(false);
     await refresh();
   }, [db, refresh]);
+
+  const confirmRedemption = useCallback(async () => {
+    if (!activeDraw) {
+      setMessage('当前没有可兑奖记录。');
+      return;
+    }
+
+    const result = await redeemDrawRecord(db, activeDraw.record.id);
+
+    if (result.status === 'ALREADY_REDEEMED') {
+      setMessage(`该奖项已经完成兑奖，时间：${result.record.redeemedAt ?? '未知'}`);
+    } else {
+      setMessage(`兑奖成功，时间：${result.record.redeemedAt ?? '未知'}`);
+    }
+
+    await refresh();
+  }, [activeDraw, db, refresh]);
+
+  const requestVoid = useCallback(() => {
+    if (!voidReason.trim()) {
+      setMessage('作废必须填写原因。');
+      return;
+    }
+
+    setConfirmVoid(true);
+  }, [voidReason]);
+
+  const confirmVoidRecord = useCallback(async () => {
+    const event = await getActiveEvent(db);
+
+    if (!event) {
+      setMessage('当前没有进行中的活动。');
+      return;
+    }
+
+    try {
+      await voidActiveDraw(db, { eventId: event.id, reason: voidReason });
+      setMessage('记录已作废。库存未自动恢复。');
+      setVoidReason('');
+      setConfirmVoid(false);
+      await refresh();
+    } catch (error) {
+      setMessage(toStaffErrorMessage(error));
+      setConfirmVoid(false);
+      await refresh();
+    }
+  }, [db, refresh, voidReason]);
 
   useEffect(() => {
     void refresh();
@@ -55,27 +116,139 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
   }, [endCurrentResult]);
 
   return (
-    <main className="admin-shell">
-      <header>
+    <main className="staff-shell">
+      <header className="staff-header">
         <BrandMark variant="on-light" />
-        <h1>工作人员</h1>
+        <div>
+          <p>Live Operations</p>
+          <h1>工作人员现场操作</h1>
+        </div>
+        <StatusBadge tone={hasActiveResult ? 'brand' : 'success'}>
+          {hasActiveResult ? 'RESULT ACTIVE' : 'STANDBY'}
+        </StatusBadge>
       </header>
-      <section className="admin-placeholder" aria-label="工作人员操作">
-        <p>当前展示页状态：{hasActiveResult ? '有未结束的中奖结果' : '待机中（无可恢复结果）'}。</p>
-        <p>抽奖完成后结果页会永久停留，直到此处或展示页「下一位参与者」结束。</p>
-        <div className="staff-actions">
-          <button
-            className="admin-button"
-            type="button"
+
+      <section className="staff-layout" aria-label="工作人员操作">
+        <article className="staff-current-card">
+          <div className="admin-panel-header">
+            <div>
+              <p>Current Draw</p>
+              <h2>当前中奖卡片</h2>
+            </div>
+          </div>
+
+        {activeDraw ? (
+          <section className="staff-record-panel" aria-label="当前中奖记录">
+            <dl className="staff-record-list">
+              <div>
+                <dt>Prize</dt>
+                <dd>{activeDraw.record.prizeNameSnapshot}</dd>
+              </div>
+              <div>
+                <dt>Time</dt>
+                <dd>{activeDraw.record.committedAt.replace('T', ' ').slice(0, 19)}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{activeDraw.record.redeemed ? 'REDEEMED' : 'NOT REDEEMED'}</dd>
+              </div>
+              <div>
+                <dt>Record</dt>
+                <dd>{activeDraw.record.id}</dd>
+              </div>
+              <div>
+                <dt>Redeemed At</dt>
+                <dd>{activeDraw.record.redeemedAt ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>Display</dt>
+                <dd>展示中</dd>
+              </div>
+            </dl>
+            {activeDraw.record.redeemed ? (
+              <p className="staff-redeemed-note">
+                {`已于 ${activeDraw.record.redeemedAt ?? '未知时间'} 完成兑奖`}
+              </p>
+            ) : null}
+          </section>
+        ) : (
+          <div className="admin-empty">
+            <p>当前没有可处理的中奖结果。</p>
+          </div>
+        )}
+        </article>
+
+        <article className="staff-operation-card">
+          <div className="admin-panel-header">
+            <div>
+              <p>Actions</p>
+              <h2>现场操作</h2>
+            </div>
+          </div>
+          <div className="staff-actions">
+          <AdminButton onClick={() => void confirmRedemption()} disabled={!activeDraw}>
+            确认兑奖
+          </AdminButton>
+          <AdminButton
+            variant="secondary"
             onClick={() => void endCurrentResult()}
             disabled={!hasActiveResult}
           >
             结束当前结果并返回待机
-          </button>
-        </div>
+          </AdminButton>
+          </div>
+          <p className="staff-hint">确认兑奖不会自动结束展示；结束展示不会自动确认兑奖。</p>
+
+        <section className="staff-danger-zone" aria-label="危险操作">
+          <h2>危险区</h2>
+          <label>
+            作废原因
+            <input
+              value={voidReason}
+              onChange={(event) => setVoidReason(event.target.value)}
+              disabled={!activeDraw || activeDraw.record.redeemed}
+            />
+          </label>
+          <AdminButton
+            variant="danger"
+            onClick={requestVoid}
+            disabled={!activeDraw || activeDraw.record.redeemed}
+          >
+            作废记录
+          </AdminButton>
+          {confirmVoid ? (
+            <div className="confirm-card" role="alertdialog" aria-label="确认作废记录">
+              <p>确认作废当前抽奖记录？库存不会自动恢复。</p>
+              <div className="confirm-card-actions">
+                <button className="confirm-button-cancel" type="button" onClick={() => setConfirmVoid(false)}>
+                  取消
+                </button>
+                <button className="confirm-button-ok" type="button" onClick={() => void confirmVoidRecord()}>
+                  确认作废
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
         <p className="staff-hint">快捷键：Ctrl + Shift + E（结束当前结果）</p>
         {message ? <p className="admin-message">{message}</p> : null}
+        </article>
       </section>
     </main>
   );
+}
+
+function toStaffErrorMessage(error: unknown): string {
+  const code = (error as Partial<DrawRepositoryError>).code;
+
+  if (code === 'DRAW_ALREADY_REDEEMED') {
+    return '已兑奖记录不能直接作废。';
+  }
+
+  if (code === 'VOID_REASON_REQUIRED') {
+    return '作废必须填写原因。';
+  }
+
+  return error instanceof Error ? error.message : String(error);
 }

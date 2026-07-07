@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { AdminDiagnosticsPage } from '../pages/admin/AdminDiagnosticsPage';
 import { AdminEventPage } from '../pages/admin/AdminEventPage';
+import { AdminPacingPage } from '../pages/admin/AdminPacingPage';
 import { AdminPrizesPage } from '../pages/admin/AdminPrizesPage';
 import { AdminRecordsPage } from '../pages/admin/AdminRecordsPage';
 import { AdminShell } from '../pages/admin/AdminShell';
@@ -19,6 +20,7 @@ export function App() {
         <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
         <Route path="/admin/event" element={<AdminEventPage />} />
         <Route path="/admin/prizes" element={<AdminPrizesPage />} />
+        <Route path="/admin/pacing" element={<AdminPacingPage />} />
         <Route path="/admin/rules" element={<AdminShell title="规则" />} />
         <Route path="/admin/participants" element={<AdminShell title="参与者" />} />
         <Route path="/admin/records" element={<AdminRecordsPage />} />

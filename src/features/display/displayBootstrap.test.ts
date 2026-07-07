@@ -20,40 +20,33 @@ describe('ensureDemoSeed', () => {
     await db.delete();
   });
 
-  it('seeds 一等奖 / 二等奖 / 三等奖 / 谢谢参与 with pyramid weights when no active event exists', async () => {
+  it('seeds only 一等奖 / 二等奖 / 三等奖 with 5 / 25 / 70 weights when no active event exists', async () => {
     await ensureDemoSeed(db);
 
     const prizes = await listPrizes(db);
     const byName = new Map(prizes.map((prize) => [prize.name, prize]));
 
-    expect([...byName.keys()].sort()).toEqual(['一等奖', '三等奖', '二等奖', '谢谢参与']);
+    expect([...byName.keys()].sort()).toEqual(['一等奖', '三等奖', '二等奖']);
 
     expect(byName.get('一等奖')).toMatchObject({
       level: 1,
       inventoryTotal: 1,
       inventoryRemaining: 1,
-      weight: 1,
+      weight: 5,
       enabled: true,
     });
     expect(byName.get('二等奖')).toMatchObject({
       level: 2,
       inventoryTotal: 5,
       inventoryRemaining: 5,
-      weight: 4,
+      weight: 25,
       enabled: true,
     });
     expect(byName.get('三等奖')).toMatchObject({
       level: 3,
       inventoryTotal: 20,
       inventoryRemaining: 20,
-      weight: 9,
-      enabled: true,
-    });
-    expect(byName.get('谢谢参与')).toMatchObject({
-      level: 9,
-      inventoryTotal: 999,
-      inventoryRemaining: 999,
-      weight: 86,
+      weight: 70,
       enabled: true,
     });
   });
