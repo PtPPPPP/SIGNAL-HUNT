@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 
 import type { DrawRecord, DrawSession, Event, Prize } from '../domain/draw/types';
+import type { DiagnosticLogRecord } from '../features/diagnostics/diagnosticLogStore';
 
 export const DATABASE_NAME = 'signal-hunt';
 
@@ -12,23 +13,45 @@ export const DATABASE_NAME = 'signal-hunt';
  *      records stay valid untouched. Adds optional non-indexed fields:
  *      - DrawRecord.voidedAt / voidReason  (traceable staff void operations)
  *      - Event.startAt / endAt             (exhibition window)
+ * v3 — additive indexes + one new table. No existing field is renamed, removed,
+ *      or transformed, so v2 records stay valid untouched. Dexie rebuilds the new
+ *      indexes over existing rows automatically on first open:
+ *      - drawRecords gains [eventId+prizeId] and [eventId+status] compound indexes
+ *        so per-event / per-prize pacing and redemption counts resolve via an index
+ *        instead of a full-table scan (the hot path is commitPersistentDraw, which
+ *        previously loaded every record across every event).
+ *      - diagnosticLogs: persisted structured log ring buffer (see diagnosticLogStore),
+ *        survives reloads/crashes for the /diagnostics page. Not part of backups.
  */
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 export class SignalHuntDatabase extends Dexie {
   events!: Table<Event, string>;
   prizes!: Table<Prize, string>;
   drawSessions!: Table<DrawSession, string>;
   drawRecords!: Table<DrawRecord, string>;
+  diagnosticLogs!: Table<DiagnosticLogRecord, string>;
 
   constructor(name = DATABASE_NAME) {
     super(name);
 
-    this.version(DATABASE_VERSION).stores({
+    this.version(2).stores({
       events: 'id, status, code',
       prizes: 'id, enabled, level',
       drawSessions: 'id, eventId, status, [eventId+status], committedRecordId',
       drawRecords: 'id, eventId, sessionId, prizeId, status, committedAt',
+    });
+
+    // v3 superset of v2 indexes. Declaring all stores again (Dexie requires the
+    // full store list per version) lets Dexie diff against v2 and only add the new
+    // drawRecords compound indexes plus the new diagnosticLogs table.
+    this.version(DATABASE_VERSION).stores({
+      events: 'id, status, code',
+      prizes: 'id, enabled, level',
+      drawSessions: 'id, eventId, status, [eventId+status], committedRecordId',
+      drawRecords:
+        'id, eventId, sessionId, prizeId, status, committedAt, [eventId+prizeId], [eventId+status]',
+      diagnosticLogs: 'id, timestamp, level, code',
     });
   }
 }

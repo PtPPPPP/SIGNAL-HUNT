@@ -34,6 +34,15 @@ button {
   min-height: 100vh;
 }
 
+.route-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-primary);
+  font-weight: 700;
+}
+
 /* ============ 展示页 /display ============ */
 
 .display-screen {
@@ -470,6 +479,11 @@ button {
   gap: var(--space-4);
 }
 
+.admin-display-mode {
+  max-width: 48rem;
+  margin-top: var(--space-8);
+}
+
 .admin-form label {
   display: grid;
   gap: var(--space-2);
@@ -783,6 +797,30 @@ button {
 
 .admin-topbar h1 {
   margin-top: var(--space-2);
+}
+
+.admin-topbar-heading {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.return-display-button {
+  width: fit-content;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.return-display-button:hover,
+.return-display-button:focus-visible {
+  border-color: var(--color-brand);
+  outline: none;
 }
 
 .admin-topbar-status {

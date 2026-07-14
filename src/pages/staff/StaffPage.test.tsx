@@ -1,7 +1,8 @@
 import 'fake-indexeddb/auto';
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as drawRepository from '../../db/drawRepository';
@@ -53,7 +54,7 @@ describe('StaffPage', () => {
       createId: (prefix) => `${prefix}-fixed`,
     });
 
-    render(<StaffPage db={db} />);
+    renderStaff(db);
 
     expect(await screen.findByText(committed.record.id)).toBeInTheDocument();
     expect(screen.getByText('一等奖')).toBeInTheDocument();
@@ -63,6 +64,7 @@ describe('StaffPage', () => {
 
     expect(await screen.findByText(/兑奖成功/)).toBeInTheDocument();
     expect(await screen.findByText(/完成兑奖/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '确认兑奖' })).toBeEnabled());
     await expect(db.drawSessions.count()).resolves.toBe(1);
   });
 
@@ -77,7 +79,7 @@ describe('StaffPage', () => {
       createId: (prefix) => `${prefix}-fixed`,
     });
 
-    render(<StaffPage db={db} />);
+    renderStaff(db);
 
     const button = await screen.findByRole('button', { name: '确认兑奖' });
     await waitFor(() => expect(button).toBeEnabled());
@@ -110,7 +112,7 @@ describe('StaffPage', () => {
       createId: (prefix) => `${prefix}-fixed`,
     });
 
-    render(<StaffPage db={db} />);
+    renderStaff(db);
 
     const button = await screen.findByRole('button', { name: '确认兑奖' });
     await waitFor(() => expect(button).toBeEnabled());
@@ -119,10 +121,11 @@ describe('StaffPage', () => {
 
     expect(await screen.findByRole('button', { name: '正在确认...' })).toBeDisabled();
 
-    pendingRedeem.resolve();
-
-    await firstClick;
-    await secondClick;
+    await act(async () => {
+      pendingRedeem.resolve();
+      await firstClick;
+      await secondClick;
+    });
     await waitFor(() => expect(redeemSpy).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/兑奖成功/)).toBeInTheDocument();
     await waitFor(async () => {
@@ -144,8 +147,9 @@ describe('StaffPage', () => {
     });
     await drawRepository.redeemDrawRecord(db, committed.record.id, () => '2026-07-06T01:05:00.000Z');
 
-    render(<StaffPage db={db} />);
+    renderStaff(db);
 
+    await screen.findByText(/已于 .* 完成兑奖/);
     await user.click(await screen.findByRole('button', { name: '确认兑奖' }));
 
     expect(await screen.findByText(/该奖项已经完成兑奖/)).toBeInTheDocument();
@@ -172,11 +176,11 @@ describe('StaffPage', () => {
       createId: (prefix) => `${prefix}-fixed`,
     });
 
-    render(<StaffPage db={db} />);
+    renderStaff(db);
 
     await user.click(await screen.findByRole('button', { name: '确认兑奖' }));
 
-    expect(await screen.findByText('network interrupted')).toBeInTheDocument();
+    expect(await screen.findByText(/兑奖操作失败/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '确认兑奖' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: '确认兑奖' }));
@@ -184,7 +188,46 @@ describe('StaffPage', () => {
     expect(redeemSpy).toHaveBeenCalledTimes(2);
     expect(await screen.findByText(/兑奖成功/)).toBeInTheDocument();
   });
+
+  it('keeps the result active when ending it fails', async () => {
+    const user = userEvent.setup();
+    const pendingEnd = createDeferred<void>();
+    await seedEvent(db, event);
+    await seedPrizes(db, [prize]);
+    await commitPersistentDraw(db, {
+      eventId: event.id,
+      random: () => 0,
+      createId: (prefix) => `${prefix}-end-failure`,
+    });
+
+    renderStaff(db);
+    const endButton = await screen.findByRole('button', { name: '结束当前结果并返回待机' });
+    const endSpy = vi
+      .spyOn(drawRepository, 'clearActiveDrawSession')
+      .mockReturnValueOnce(pendingEnd.promise);
+
+    const click = user.click(endButton);
+    await waitFor(() => expect(endSpy).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      pendingEnd.reject(new Error('simulated storage failure'));
+      await pendingEnd.promise.catch(() => undefined);
+      await Promise.resolve();
+    });
+    await click;
+
+    expect(await screen.findByText(/结束当前结果失败/)).toBeInTheDocument();
+    expect(screen.getByText('一等奖')).toBeInTheDocument();
+    await expect(db.drawSessions.count()).resolves.toBe(1);
+  });
 });
+
+function renderStaff(db: SignalHuntDatabase) {
+  return render(
+    <MemoryRouter initialEntries={['/staff']}>
+      <StaffPage db={db} />
+    </MemoryRouter>,
+  );
+}
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

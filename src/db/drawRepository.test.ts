@@ -6,6 +6,7 @@ import { createSignalHuntDatabase, type SignalHuntDatabase } from './database';
 import {
   clearActiveDrawSession,
   commitPersistentDraw,
+  markDrawRevealed,
   recoverCommittedDraw,
   redeemDrawRecord,
   seedEvent,
@@ -277,4 +278,137 @@ describe('draw persistence repository', () => {
 
     await expect(db.drawRecords.get(committed.record.id)).resolves.toMatchObject({ status: 'REDEEMED' });
   });
+
+  it('keeps REDEEMED terminal when reveal and redeem race', async () => {
+    const committed = await commitFixture(db, 'reveal-redeem');
+    const secondWindow = createSignalHuntDatabase(db.name);
+    await secondWindow.open();
+
+    try {
+      await Promise.all([
+        markDrawRevealed(db, committed.record.id, () => '2026-07-06T01:01:00.000Z'),
+        redeemDrawRecord(secondWindow, committed.record.id, () => '2026-07-06T01:02:00.000Z'),
+      ]);
+    } finally {
+      secondWindow.close();
+    }
+
+    await expect(db.drawRecords.get(committed.record.id)).resolves.toMatchObject({
+      status: 'REDEEMED',
+      redeemed: true,
+      redeemedAt: '2026-07-06T01:02:00.000Z',
+    });
+  });
+
+  it('keeps VOIDED terminal when reveal and void race', async () => {
+    const committed = await commitFixture(db, 'reveal-void');
+    const secondWindow = createSignalHuntDatabase(db.name);
+    await secondWindow.open();
+
+    try {
+      await Promise.all([
+        markDrawRevealed(db, committed.record.id, () => '2026-07-06T01:01:00.000Z'),
+        voidActiveDraw(secondWindow, {
+          eventId: event.id,
+          recordId: committed.record.id,
+          reason: '并发作废',
+          now: () => '2026-07-06T01:02:00.000Z',
+        }),
+      ]);
+    } finally {
+      secondWindow.close();
+    }
+
+    await expect(db.drawRecords.get(committed.record.id)).resolves.toMatchObject({
+      status: 'VOIDED',
+      redeemed: false,
+      voidedAt: '2026-07-06T01:02:00.000Z',
+    });
+  });
+
+  it('does not let a delayed reveal overwrite an earlier redemption', async () => {
+    const committed = await commitFixture(db, 'redeem-before-reveal');
+    const redeemed = await redeemDrawRecord(db, committed.record.id, () => '2026-07-06T01:02:00.000Z');
+    const reveal = await markDrawRevealed(db, committed.record.id, () => '2026-07-06T01:03:00.000Z');
+
+    expect(redeemed.status).toBe('REDEEMED');
+    expect(reveal.status).toBe('TERMINAL_STATE');
+    expect(reveal.record).toMatchObject({
+      status: 'REDEEMED',
+      redeemedAt: '2026-07-06T01:02:00.000Z',
+    });
+  });
+
+  it('does not let a delayed reveal overwrite an earlier void', async () => {
+    const committed = await commitFixture(db, 'void-before-reveal');
+    await voidActiveDraw(db, {
+      eventId: event.id,
+      recordId: committed.record.id,
+      reason: '先作废',
+      now: () => '2026-07-06T01:02:00.000Z',
+    });
+
+    const reveal = await markDrawRevealed(db, committed.record.id, () => '2026-07-06T01:03:00.000Z');
+
+    expect(reveal.status).toBe('TERMINAL_STATE');
+    expect(reveal.record).toMatchObject({ status: 'VOIDED', voidReason: '先作废' });
+  });
+
+  it('rejects redemption after a draw is voided', async () => {
+    const committed = await commitFixture(db, 'void-before-redeem');
+    await voidActiveDraw(db, {
+      eventId: event.id,
+      recordId: committed.record.id,
+      reason: '不可兑奖',
+    });
+
+    await expect(redeemDrawRecord(db, committed.record.id)).rejects.toMatchObject({
+      code: 'DRAW_ALREADY_VOIDED',
+    });
+  });
+
+  it('serializes concurrent redemption and preserves the first redeemedAt', async () => {
+    const committed = await commitFixture(db, 'parallel-redeem');
+    const secondWindow = createSignalHuntDatabase(db.name);
+    await secondWindow.open();
+    let results: Awaited<ReturnType<typeof redeemDrawRecord>>[];
+
+    try {
+      results = await Promise.all([
+        redeemDrawRecord(db, committed.record.id, () => '2026-07-06T01:02:00.000Z'),
+        redeemDrawRecord(secondWindow, committed.record.id, () => '2026-07-06T01:03:00.000Z'),
+      ]);
+    } finally {
+      secondWindow.close();
+    }
+
+    expect(results.map((result) => result.status).sort()).toEqual(['ALREADY_REDEEMED', 'REDEEMED']);
+    expect(new Set(results.map((result) => result.record.redeemedAt)).size).toBe(1);
+    await expect(db.drawRecords.get(committed.record.id)).resolves.toMatchObject({
+      status: 'REDEEMED',
+      redeemedAt: results[0].record.redeemedAt,
+    });
+  });
+
+  it('keeps repeated reveal idempotent and preserves the first revealedAt', async () => {
+    const committed = await commitFixture(db, 'repeat-reveal');
+    const first = await markDrawRevealed(db, committed.record.id, () => '2026-07-06T01:01:00.000Z');
+    const second = await markDrawRevealed(db, committed.record.id, () => '2026-07-06T01:02:00.000Z');
+
+    expect(first.status).toBe('REVEALED');
+    expect(second.status).toBe('ALREADY_REVEALED');
+    expect(second.record.revealedAt).toBe('2026-07-06T01:01:00.000Z');
+  });
 });
+
+async function commitFixture(db: SignalHuntDatabase, suffix: string) {
+  await seedEvent(db, event);
+  await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 2 })]);
+
+  return commitPersistentDraw(db, {
+    eventId: event.id,
+    now: () => '2026-07-06T01:00:00.000Z',
+    random: () => 0,
+    createId: (prefix) => `${prefix}-${suffix}`,
+  });
+}

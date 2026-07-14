@@ -1,11 +1,11 @@
 import 'fake-indexeddb/auto';
 
-import { render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createSignalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import { commitPersistentDraw, recoverCommittedDraw, seedEvent, seedPrizes } from '../../db/drawRepository';
-import { pauseEvent } from '../../db/eventRepository';
+import { activateEvent, pauseEvent } from '../../db/eventRepository';
 import type { Event, Prize } from '../../domain/draw/types';
 import { DisplayPage } from './DisplayPage';
 
@@ -41,6 +41,7 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
   });
 
   afterEach(async () => {
+    cleanup();
     vi.unstubAllEnvs();
     await db.delete();
   });
@@ -78,9 +79,10 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
 
     render(<DisplayPage db={db} />);
 
-    expect(await screen.findByRole('heading', { name: /系统已暂停/ })).toBeInTheDocument();
+    // A committed result has priority over the paused event state and is restored.
+    expect(await screen.findByRole('heading', { name: /信号已锁定/i })).toBeInTheDocument();
+    expect(screen.getByText('一等奖')).toBeInTheDocument();
 
-    // The committed session must remain recoverable even though the kiosk is paused.
     await expect(recoverCommittedDraw(db, event.id)).resolves.toMatchObject({
       record: { id: 'record-fixed' },
     });
@@ -92,5 +94,26 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
     render(<DisplayPage db={db} />);
 
     expect(await screen.findByRole('heading', { name: /活动已结束/ })).toBeInTheDocument();
+  });
+
+  it('reacts to event activation, pause and resume without focus or reload', async () => {
+    render(<DisplayPage db={db} />);
+    expect(await screen.findByRole('heading', { name: /尚未配置活动/ })).toBeInTheDocument();
+
+    await act(async () => {
+      await seedEvent(db, event);
+      await seedPrizes(db, [prize()]);
+    });
+    expect(await screen.findByRole('button', { name: /触碰屏幕/ })).toBeInTheDocument();
+
+    await act(async () => {
+      await pauseEvent(db, event.id);
+    });
+    expect(await screen.findByRole('heading', { name: /系统已暂停/ })).toBeInTheDocument();
+
+    await act(async () => {
+      await activateEvent(db, event.id);
+    });
+    expect(await screen.findByRole('button', { name: /触碰屏幕/ })).toBeInTheDocument();
   });
 });

@@ -74,6 +74,24 @@ describe('display state machine', () => {
     expect(transitionDisplayState(error, { type: 'RESET_COMPLETE' }).status).toBe('ATTRACT');
   });
 
+  it('surfaces database failures instead of presenting an interactive display', () => {
+    const error = transitionDisplayState(createInitialDisplayState(), {
+      type: 'DATABASE_FAILED',
+      message: 'IndexedDB unavailable',
+    });
+
+    expect(error).toMatchObject({
+      status: 'ERROR',
+      errorMessage: 'IndexedDB unavailable',
+      interactionLocked: true,
+    });
+  });
+
+  it('restores an external committed draw from PAUSED', () => {
+    const paused = transitionDisplayState(createInitialDisplayState(), { type: 'PAUSE' });
+    expect(transitionDisplayState(paused, { type: 'DRAW_RECOVERED' }).status).toBe('RESULT');
+  });
+
   it('exposes concise copy for display states', () => {
     expect(getDisplayCopy('ATTRACT').title).toBe('发现你的幸运信号');
     expect(getDisplayCopy('SCANNING').title).toBe('扫描信号中');

@@ -12,6 +12,12 @@ import {
   validatePrize,
 } from '../../domain/draw/prizeValidation';
 import { parsePrizeImport, stringifyPrizeExport } from '../../features/admin/prizeImport';
+import {
+  PACING_STATUS_LABELS,
+  PROBABILITY_MODE_LABELS,
+  formatAdminDateTime,
+} from '../../features/admin/statusLabels';
+import { publishAppChange } from '../../features/sync/appSync';
 import { AdminLayout } from './AdminLayout';
 
 type AdminPrizesPageProps = {
@@ -83,6 +89,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
     [activeEvent, preview.effectiveWeight, prizes, records],
   );
   const estimatedShare = totalEffectiveWeight > 0 ? (preview.effectiveWeight / totalEffectiveWeight) * 100 : 0;
+  const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(defaultForm) || jsonText !== exportText;
 
   const refresh = useCallback(async (options: { syncJsonText: boolean | 'ifEmpty' }) => {
     const [nextPrizes, nextRecords, event] = await Promise.all([
@@ -118,6 +125,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
     try {
       const prize = validatePrize(createPrizeFromForm(form));
       await savePrize(db, prize);
+      publishAppChange('PRIZES_UPDATED', activeEvent?.id);
       setFormErrors({});
       setMessage('奖品已保存。');
       setForm(defaultForm);
@@ -129,7 +137,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
         return;
       }
 
-      throw error;
+      setMessage('奖品保存失败，请检查数据后重试。');
     }
   };
 
@@ -137,6 +145,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
     try {
       const importedPrizes = parsePrizeImport(jsonText);
       await replacePrizes(db, importedPrizes);
+      publishAppChange('PRIZES_UPDATED', activeEvent?.id);
       setMessage('奖品 JSON 已导入。');
       await refresh({ syncJsonText: true });
     } catch {
@@ -145,7 +154,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
   };
 
   return (
-    <AdminLayout title="Prize Management">
+    <AdminLayout title="奖品管理" db={db} hasUnsavedChanges={hasUnsavedChanges}>
       {loading ? <section className="admin-panel">正在读取奖品...</section> : null}
 
       <section className="admin-toolbar">
@@ -156,7 +165,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
 
       <section className="admin-prize-editor">
         <form className="admin-form admin-prize-form" onSubmit={(event) => event.preventDefault()}>
-          <FormSection title="Basic Information">
+          <FormSection title="基本信息">
             <label>
               编号
               <input value={form.id} onChange={(event) => setForm({ ...form, id: event.target.value })} />
@@ -182,35 +191,35 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
             </label>
           </FormSection>
 
-          <FormSection title="Inventory">
+          <FormSection title="库存">
             <div className="admin-form-row">
               <NumberField label="等级" value={form.level} min={1} step={1} onChange={(value) => setForm({ ...form, level: value })} error={formErrors.level} />
               <NumberField label="总量" value={form.inventoryTotal} min={0} step={1} onChange={(value) => setForm({ ...form, inventoryTotal: value })} error={formErrors.inventoryTotal} />
               <NumberField label="剩余" value={form.inventoryRemaining} min={0} step={1} onChange={(value) => setForm({ ...form, inventoryRemaining: value })} error={formErrors.inventoryRemaining} />
             </div>
-            <p className="admin-helper">已中奖数量会从抽奖记录中统计，库存字段保存前仍会走 Zod 校验。</p>
+            <p className="admin-helper">已中奖数量会从抽奖记录中统计，保存前会检查库存范围是否合法。</p>
           </FormSection>
 
-          <FormSection title="Probability Strategy">
+          <FormSection title="中奖策略">
             <label>
-              Probability Mode
+              概率模式
               <select
                 value={form.probabilityMode}
                 onChange={(event) => setForm({ ...form, probabilityMode: event.target.value as PrizeProbabilityMode })}
               >
-                <option value="FIXED">Fixed Weight</option>
-                <option value="TIME_RELEASE">Time Release</option>
-                <option value="SMART_PACING">Smart Pacing</option>
+                <option value="FIXED">固定概率</option>
+                <option value="TIME_RELEASE">分时释放</option>
+                <option value="SMART_PACING">智能发放</option>
               </select>
             </label>
-            <NumberField label="Base Weight" value={form.weight} min={0} step={0.1} onChange={(value) => setForm({ ...form, weight: value })} error={formErrors.weight} />
-            <p className="admin-helper">Estimated Share: {estimatedShare.toFixed(1)}%</p>
+            <NumberField label="基础权重" value={form.weight} min={0} step={0.1} onChange={(value) => setForm({ ...form, weight: value })} error={formErrors.weight} />
+            <p className="admin-helper">预计占比：{estimatedShare.toFixed(1)}%</p>
 
             {form.probabilityMode !== 'FIXED' ? (
               <label>
-                Release Schedule
+                释放计划
                 <textarea
-                  aria-label="Release Schedule"
+                  aria-label="释放计划"
                   value={form.releaseScheduleText}
                   onChange={(event) => setForm({ ...form, releaseScheduleText: event.target.value })}
                   rows={5}
@@ -224,14 +233,14 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
             {form.probabilityMode === 'SMART_PACING' ? (
               <div className="admin-form-block">
                 <div className="admin-form-row">
-                  <NumberField label="Minimum Multiplier" value={form.minMultiplier} min={0} step={0.1} onChange={(value) => setForm({ ...form, minMultiplier: value })} />
-                  <NumberField label="Maximum Multiplier" value={form.maxMultiplier} min={0} step={0.1} onChange={(value) => setForm({ ...form, maxMultiplier: value })} />
-                  <NumberField label="Sensitivity" value={form.sensitivity} min={0.1} max={1} step={0.1} onChange={(value) => setForm({ ...form, sensitivity: value })} />
+                  <NumberField label="最小倍率" value={form.minMultiplier} min={0} step={0.1} onChange={(value) => setForm({ ...form, minMultiplier: value })} />
+                  <NumberField label="最大倍率" value={form.maxMultiplier} min={0} step={0.1} onChange={(value) => setForm({ ...form, maxMultiplier: value })} />
+                  <NumberField label="响应强度" value={form.sensitivity} min={0.1} max={1} step={0.1} onChange={(value) => setForm({ ...form, sensitivity: value })} />
                 </div>
                 <div className="admin-form-row">
-                  <NumberField label="Minimum Win Interval" unit="min" value={form.minIntervalMinutes} min={0} step={1} onChange={(value) => setForm({ ...form, minIntervalMinutes: value })} />
-                  <NumberField label="Catch-Up Start" unit="min before end" value={form.catchUpStartBeforeEndMinutes} min={0} step={1} onChange={(value) => setForm({ ...form, catchUpStartBeforeEndMinutes: value })} />
-                  <NumberField label="Catch-Up Max" value={form.catchUpMaxMultiplier} min={0} step={0.1} onChange={(value) => setForm({ ...form, catchUpMaxMultiplier: value })} />
+                  <NumberField label="最短中奖间隔" unit="分钟" value={form.minIntervalMinutes} min={0} step={1} onChange={(value) => setForm({ ...form, minIntervalMinutes: value })} />
+                  <NumberField label="追赶开始时间" unit="结束前分钟" value={form.catchUpStartBeforeEndMinutes} min={0} step={1} onChange={(value) => setForm({ ...form, catchUpStartBeforeEndMinutes: value })} />
+                  <NumberField label="追赶最大倍率" value={form.catchUpMaxMultiplier} min={0} step={0.1} onChange={(value) => setForm({ ...form, catchUpMaxMultiplier: value })} />
                 </div>
                 <label className="admin-checkbox">
                   <input
@@ -239,7 +248,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
                     checked={form.catchUpEnabled}
                     onChange={(event) => setForm({ ...form, catchUpEnabled: event.target.checked })}
                   />
-                  Enable Catch-Up
+                  启用追赶发放
                 </label>
                 <p className="admin-helper">响应强度越高，系统对“出奖偏快/偏慢”的权重调整越明显。</p>
               </div>
@@ -250,32 +259,32 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
           {message ? <p className="admin-message">{message}</p> : null}
         </form>
 
-        <aside className="admin-panel live-preview" aria-label="Live Preview">
+        <aside className="admin-panel live-preview" aria-label="实时预览">
           <div className="admin-panel-header">
             <div>
-              <p>Live Preview</p>
+              <p>实时预览</p>
               <h2>真实节奏计算</h2>
             </div>
-            <StatusBadge tone={toneForPacing(preview.status)}>{preview.status}</StatusBadge>
+            <StatusBadge tone={toneForPacing(preview.status)}>{PACING_STATUS_LABELS[preview.status]}</StatusBadge>
           </div>
           <dl className="admin-definition-grid">
-            <div><dt>Current Time</dt><dd>{formatDateTime(preview.currentTime)}</dd></div>
-            <div><dt>Exhibition Progress</dt><dd>{Math.round(preview.eventProgress * 100)}%</dd></div>
-            <div><dt>Expected Wins</dt><dd>{preview.expectedWins}</dd></div>
-            <div><dt>Actual Wins</dt><dd>{preview.actualWins}</dd></div>
-            <div><dt>Pacing Error</dt><dd>{preview.pacingError.toFixed(2)}</dd></div>
-            <div><dt>Base Weight</dt><dd>{preview.baseWeight}</dd></div>
-            <div><dt>Multiplier</dt><dd>{preview.multiplier.toFixed(2)}x</dd></div>
-            <div><dt>Effective Weight</dt><dd>{preview.effectiveWeight.toFixed(2)}</dd></div>
+            <div><dt>当前时间</dt><dd>{formatAdminDateTime(preview.currentTime)}</dd></div>
+            <div><dt>展会进度</dt><dd>{Math.round(preview.eventProgress * 100)}%</dd></div>
+            <div><dt>预计中奖数</dt><dd>{preview.expectedWins}</dd></div>
+            <div><dt>实际中奖数</dt><dd>{preview.actualWins}</dd></div>
+            <div><dt>节奏偏差</dt><dd>{preview.pacingError.toFixed(2)}</dd></div>
+            <div><dt>基础权重</dt><dd>{preview.baseWeight}</dd></div>
+            <div><dt>当前倍率</dt><dd>{preview.multiplier.toFixed(2)} 倍</dd></div>
+            <div><dt>有效权重</dt><dd>{preview.effectiveWeight.toFixed(2)}</dd></div>
           </dl>
-          <p className="admin-helper">此预览调用 `calculatePrizePacing()`，与真实抽奖使用同一个 domain 计算。</p>
+          <p className="admin-helper">此预览与真实抽奖使用同一套发放节奏计算规则。</p>
         </aside>
       </section>
 
       <section className="admin-panel">
         <div className="admin-panel-header">
           <div>
-            <p>Prize Table</p>
+            <p>奖品数据</p>
             <h2>奖品列表</h2>
           </div>
         </div>
@@ -283,16 +292,16 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Prize</th>
-                <th>Level</th>
-                <th>Mode</th>
-                <th>Base Weight</th>
-                <th>Effective Weight</th>
-                <th>Inventory</th>
-                <th>Won</th>
-                <th>Redeemed</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>奖项</th>
+                <th>等级</th>
+                <th>模式</th>
+                <th>基础权重</th>
+                <th>有效权重</th>
+                <th>库存</th>
+                <th>已中奖</th>
+                <th>已兑奖</th>
+                <th>状态</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -305,13 +314,13 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
                   <tr key={prize.id}>
                     <td>{prize.name}</td>
                     <td>{prize.level}</td>
-                    <td>{prize.probabilityMode ?? 'FIXED'}</td>
+                    <td>{PROBABILITY_MODE_LABELS[prize.probabilityMode ?? 'FIXED']}</td>
                     <td>{prize.weight}</td>
                     <td>{snapshot.effectiveWeight.toFixed(2)}</td>
                     <td>{prize.inventoryRemaining} / {prize.inventoryTotal}</td>
                     <td>{won}</td>
                     <td>{redeemed}</td>
-                    <td><StatusBadge tone={toneForPacing(snapshot.status)}>{snapshot.status}</StatusBadge></td>
+                    <td><StatusBadge tone={toneForPacing(snapshot.status)}>{PACING_STATUS_LABELS[snapshot.status]}</StatusBadge></td>
                     <td><AdminButton variant="ghost" onClick={() => setForm(toFormState(prize))}>编辑</AdminButton></td>
                   </tr>
                 );
@@ -326,14 +335,14 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
       <section className="admin-panel">
         <div className="admin-panel-header">
           <div>
-            <p>JSON Import / Export</p>
+            <p>数据导入与导出</p>
             <h2>奖品 JSON</h2>
           </div>
         </div>
         <label className="admin-json-field">
           奖品 JSON
           <textarea
-            aria-label="Prize JSON"
+            aria-label="奖品 JSON"
             value={jsonText}
             onChange={(event) => setJsonText(event.target.value)}
             rows={12}
@@ -494,8 +503,4 @@ function toneForPacing(status: string) {
   }
 
   return 'success';
-}
-
-function formatDateTime(value: string): string {
-  return value.replace('T', ' ').slice(0, 19);
 }

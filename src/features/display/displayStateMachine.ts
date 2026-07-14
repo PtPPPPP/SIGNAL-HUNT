@@ -16,6 +16,8 @@ export type DrawState =
 export type DisplayEvent =
   | { type: 'BOOT_READY' }
   | { type: 'BOOT_RECOVERED' }
+  | { type: 'DRAW_RECOVERED' }
+  | { type: 'DATABASE_FAILED'; message: string }
   | { type: 'TOUCH_ACCEPTED' }
   | { type: 'COMMIT_STARTED' }
   | { type: 'COMMIT_SUCCEEDED' }
@@ -25,6 +27,7 @@ export type DisplayEvent =
   | { type: 'PEAK_CONFIRMED' }
   | { type: 'LOCK_COMPLETE' }
   | { type: 'REVEAL_COMPLETE' }
+  | { type: 'DRAW_VOIDED' }
   | { type: 'RESET_STARTED' }
   | { type: 'RESET_COMPLETE' }
   | { type: 'PAUSE' }
@@ -114,9 +117,11 @@ const NEXT_STATE: Partial<Record<DrawState, Partial<Record<DisplayEvent['type'],
   BOOT: {
     BOOT_READY: 'ATTRACT',
     BOOT_RECOVERED: 'RESULT',
+    DRAW_RECOVERED: 'RESULT',
     PAUSE: 'PAUSED',
   },
   ATTRACT: {
+    DRAW_RECOVERED: 'RESULT',
     TOUCH_ACCEPTED: 'ARMING',
     PAUSE: 'PAUSED',
   },
@@ -128,20 +133,26 @@ const NEXT_STATE: Partial<Record<DrawState, Partial<Record<DisplayEvent['type'],
   },
   SCANNING: {
     SCAN_COMPLETE: 'SEARCHING',
+    DRAW_VOIDED: 'RESETTING',
   },
   SEARCHING: {
     SEARCH_COMPLETE: 'PEAK_DETECTED',
+    DRAW_VOIDED: 'RESETTING',
   },
   PEAK_DETECTED: {
     PEAK_CONFIRMED: 'LOCKING',
+    DRAW_VOIDED: 'RESETTING',
   },
   LOCKING: {
     LOCK_COMPLETE: 'REVEALING',
+    DRAW_VOIDED: 'RESETTING',
   },
   REVEALING: {
     REVEAL_COMPLETE: 'RESULT',
+    DRAW_VOIDED: 'RESETTING',
   },
   RESULT: {
+    DRAW_VOIDED: 'RESETTING',
     RESET_STARTED: 'RESETTING',
     RESET_COMPLETE: 'ATTRACT',
   },
@@ -149,9 +160,11 @@ const NEXT_STATE: Partial<Record<DrawState, Partial<Record<DisplayEvent['type'],
     RESET_COMPLETE: 'ATTRACT',
   },
   PAUSED: {
+    DRAW_RECOVERED: 'RESULT',
     RESUME: 'ATTRACT',
   },
   ERROR: {
+    DRAW_RECOVERED: 'RESULT',
     RESET_COMPLETE: 'ATTRACT',
   },
 };
@@ -171,6 +184,18 @@ export function transitionDisplayState(state: DisplayState, event: DisplayEvent)
   if (event.type === 'COMMIT_FAILED') {
     if (state.status !== 'COMMITTING') {
       throw createInvalidTransitionError(state.status, event.type);
+    }
+
+    return {
+      status: 'ERROR',
+      interactionLocked: true,
+      errorMessage: event.message,
+    };
+  }
+
+  if (event.type === 'DATABASE_FAILED') {
+    if (state.status === 'RESULT') {
+      return { ...state, errorMessage: event.message };
     }
 
     return {

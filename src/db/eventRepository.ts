@@ -3,6 +3,8 @@ import type { SignalHuntDatabase } from './database';
 
 export type EventRepositoryErrorCode =
   | 'ACTIVE_EVENT_EXISTS'
+  | 'EVENT_ALREADY_ENDED'
+  | 'EVENT_HAS_ACTIVE_DRAW'
   | 'EVENT_NOT_FOUND'
   | 'EVENT_CODE_TAKEN'
   | 'INVALID_TRANSITION';
@@ -23,7 +25,7 @@ export type CreateEventInput = {
   code: string;
   startAt?: string;
   endAt?: string;
-  /** Defaults to DRAFT. Pass ACTIVE to create-and-activate in one step. */
+  /** Defaults to DRAFT. ACTIVE creation still enforces the single-active invariant. */
   status?: EventStatus;
   id?: string;
   now?: () => string;
@@ -86,11 +88,25 @@ export async function createEvent(db: SignalHuntDatabase, input: CreateEventInpu
     }
 
     const now = input.now ?? (() => new Date().toISOString());
+    const status = input.status ?? 'DRAFT';
+
+    if (status === 'ACTIVE') {
+      const existingActive = await db.events.where('status').equals('ACTIVE').first();
+
+      if (existingActive) {
+        throw new EventRepositoryError(
+          'ACTIVE_EVENT_EXISTS',
+          '已存在激活中的活动，需要先暂停旧活动。',
+          { conflictingEventIds: [existingActive.id] },
+        );
+      }
+    }
+
     const event: Event = {
       id: input.id ?? createId(),
       name: input.name.trim(),
       code,
-      status: input.status ?? 'DRAFT',
+      status,
       createdAt: now(),
       startAt: normalizeTimestamp(input.startAt),
       endAt: normalizeTimestamp(input.endAt),
@@ -112,6 +128,18 @@ export async function activateEvent(
 
     if (!target) {
       throw new EventRepositoryError('EVENT_NOT_FOUND', '活动不存在。', { eventId });
+    }
+
+    if (target.status === 'ENDED') {
+      throw new EventRepositoryError(
+        'EVENT_ALREADY_ENDED',
+        '活动已结束，不能重新激活。',
+        { eventId },
+      );
+    }
+
+    if (target.status === 'ACTIVE') {
+      return;
     }
 
     const activeOthers = (await db.events.where('status').equals('ACTIVE').toArray()).filter(
@@ -157,7 +185,7 @@ export async function pauseEvent(db: SignalHuntDatabase, eventId: string): Promi
 }
 
 export async function endEvent(db: SignalHuntDatabase, eventId: string): Promise<void> {
-  return db.transaction('rw', db.events, async () => {
+  return db.transaction('rw', db.events, db.drawSessions, async () => {
     const target = await db.events.get(eventId);
 
     if (!target) {
@@ -166,6 +194,19 @@ export async function endEvent(db: SignalHuntDatabase, eventId: string): Promise
 
     if (target.status === 'ENDED') {
       return;
+    }
+
+    const activeDraw = await db.drawSessions
+      .where('[eventId+status]')
+      .equals([eventId, 'COMMITTED'])
+      .first();
+
+    if (activeDraw) {
+      throw new EventRepositoryError(
+        'EVENT_HAS_ACTIVE_DRAW',
+        '活动存在未结束的抽奖结果，请先在工作人员页面结束当前结果。',
+        { eventId, sessionId: activeDraw.id },
+      );
     }
 
     await db.events.put({ ...target, status: 'ENDED' });

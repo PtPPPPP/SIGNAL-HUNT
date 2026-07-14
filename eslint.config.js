@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules'] },
+  { ignores: ['.vite-electron', 'dist', 'node_modules', 'out', 'release'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -25,7 +25,7 @@ export default tseslint.config(
   },
   {
     // Node CLI tooling (preflight / burn-in launcher) — node globals apply.
-    files: ['scripts/**/*.mjs'],
+    files: ['electron/**/*.{cts,ts}', 'forge.config.cjs', 'scripts/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

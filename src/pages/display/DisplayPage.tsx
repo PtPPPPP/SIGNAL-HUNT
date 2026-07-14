@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react';
+import { liveQuery } from 'dexie';
 import { gsap } from 'gsap';
 
 import {
@@ -22,29 +31,59 @@ import {
 import { applyDisplayEvent } from '../../features/display/displayTransition';
 import { POST_COMMIT_TIMELINE_STEPS } from '../../features/display/displayTimeline';
 import { BrandMark } from '../../features/brand/BrandMark';
+import { subscribeAppChanges } from '../../features/sync/appSync';
 import { SignalCanvas } from '../../visual/signal-engine/SignalCanvas';
+import type { DrawRecord, DrawSession, Event } from '../../domain/draw/types';
 
 type DisplayPageProps = {
   db?: SignalHuntDatabase;
 };
 
+type DisplayDatabaseSnapshot = {
+  activeEvent?: Event;
+  eventCount: number;
+  pausedEvent?: Event;
+  record?: DrawRecord;
+  session?: DrawSession;
+};
+
+type BlockedMessage = { title: string; subtitle: string } | null;
+
+type DisplaySnapshotHandlers = {
+  currentState: DisplayState;
+  eventIdRef: MutableRefObject<string | undefined>;
+  initialAdminRequestedRef: MutableRefObject<boolean>;
+  resetInFlightRef: MutableRefObject<boolean>;
+  scheduleReset: (delayMs: number) => void;
+  setBlockedMessage: Dispatch<SetStateAction<BlockedMessage>>;
+  setDisplayState: Dispatch<SetStateAction<DisplayState>>;
+  setRevealedPrizeName: Dispatch<SetStateAction<string | undefined>>;
+  setResultActionError: Dispatch<SetStateAction<string | undefined>>;
+};
+
 // RESULT 永久停留，直到工作人员手动结束。开启后点击「下一位参与者」需二次确认，
 // 防止中奖者拍照 / 指屏时误触退出。展会正式使用建议保持开启。
 const CONFIRM_BEFORE_RESET_RESULT = true;
-const ERROR_RESET_DELAY_MS = 4000;
 const RESETTING_HOLD_MS = 700;
 
 export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
   const [displayState, setDisplayState] = useState<DisplayState>(createInitialDisplayState);
   const [revealedPrizeName, setRevealedPrizeName] = useState<string | undefined>(undefined);
   const [confirmExit, setConfirmExit] = useState(false);
-  const [blockedMessage, setBlockedMessage] = useState<{ title: string; subtitle: string } | null>(null);
+  const [blockedMessage, setBlockedMessage] = useState<BlockedMessage>(null);
+  const [databaseReady, setDatabaseReady] = useState(false);
+  const [resultActionError, setResultActionError] = useState<string | undefined>(undefined);
+  const [syncError, setSyncError] = useState(false);
+  const [syncRetryNonce, setSyncRetryNonce] = useState(0);
+  const syncErrorRef = useRef(false);
 
   const panelRef = useRef<HTMLElement | null>(null);
   const timeoutIdsRef = useRef<number[]>([]);
   const eventIdRef = useRef<string | undefined>(undefined);
   const commitInFlightRef = useRef(false);
+  const initialAdminRequestedRef = useRef(false);
   const mountedRef = useRef(true);
+  const resetInFlightRef = useRef(false);
   const stateRef = useRef(displayState);
 
   stateRef.current = displayState;
@@ -72,6 +111,8 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
       }
 
       setDisplayState((current) => applyEvent(current, { type: 'RESET_COMPLETE' }));
+      setRevealedPrizeName(undefined);
+      setResultActionError(undefined);
     }, delayMs);
 
     timeoutIdsRef.current.push(timeoutId);
@@ -89,18 +130,38 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
 
           if (step.event.type === 'REVEAL_COMPLETE') {
             void markDrawRevealed(db, recordId)
-              .then(() => log('DRAW_REVEALED', { recordId }))
-              .catch((error) => log('DATABASE_ERROR', { stage: 'reveal', message: toErrorMessage(error) }));
+              .then((result) => {
+                if (!mountedRef.current) return;
+
+                if (result.record.status === 'VOIDED') {
+                  log('DRAW_REVEALED', { recordId, skipped: 'VOIDED' });
+                  setRevealedPrizeName(undefined);
+                  setDisplayState((current) => applyEvent(current, { type: 'DRAW_VOIDED' }));
+                  scheduleReset(RESETTING_HOLD_MS);
+                  return;
+                }
+
+                log('DRAW_REVEALED', { recordId, transition: result.status });
+                setDisplayState((current) => applyEvent(current, step.event));
+              })
+              .catch((error) => {
+                if (!mountedRef.current) return;
+
+                const message = toErrorMessage(error);
+                log('DATABASE_ERROR', { stage: 'reveal', message });
+                setBlockedMessage({ title: '揭晓保存失败', subtitle: 'REVEAL SAVE FAILED' });
+                setDisplayState((current) => applyEvent(current, { type: 'DATABASE_FAILED', message }));
+              });
+            return;
           }
 
-          // RESULT 之后不再自动复位：由「下一位参与者」按钮手动触发退出。
           setDisplayState((current) => applyEvent(current, step.event));
         }, step.atMs),
       );
 
       timeoutIdsRef.current.push(...ids);
     },
-    [db],
+    [db, scheduleReset],
   );
 
   const runCommit = useCallback(
@@ -129,10 +190,9 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
         const message = toErrorMessage(error);
         log('DATABASE_ERROR', { stage: 'commit', message });
         setDisplayState((current) => applyEvent(current, { type: 'COMMIT_FAILED', message }));
-        scheduleReset(ERROR_RESET_DELAY_MS);
       }
     },
-    [db, schedulePostCommitTimeline, scheduleReset],
+    [db, schedulePostCommitTimeline],
   );
 
   const handleTouchStart = useCallback(() => {
@@ -163,18 +223,32 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
     const eventId = eventIdRef.current;
 
     setConfirmExit(false);
-    setDisplayState((current) =>
-      current.status === 'RESULT' ? applyEvent(current, { type: 'RESET_STARTED' }) : current,
-    );
+    setResultActionError(undefined);
+
+    if (!eventId || resetInFlightRef.current) {
+      setResultActionError('无法结束当前结果，请联系现场工作人员。');
+      return;
+    }
+
+    resetInFlightRef.current = true;
 
     void (async () => {
-      if (eventId) {
-        await clearActiveDrawSession(db, eventId).catch((error) =>
-          log('DATABASE_ERROR', { stage: 'manualClear', message: toErrorMessage(error) }),
-        );
-      }
+      try {
+        await clearActiveDrawSession(db, eventId);
+        if (!mountedRef.current) return;
 
-      scheduleReset(RESETTING_HOLD_MS);
+        setDisplayState((current) =>
+          current.status === 'RESULT' ? applyEvent(current, { type: 'RESET_STARTED' }) : current,
+        );
+        scheduleReset(RESETTING_HOLD_MS);
+      } catch (error) {
+        resetInFlightRef.current = false;
+        const message = toErrorMessage(error);
+        log('DATABASE_ERROR', { stage: 'manualClear', message });
+        if (mountedRef.current) {
+          setResultActionError('结果尚未安全结束，请联系现场工作人员重试。');
+        }
+      }
     })();
   }, [db, scheduleReset]);
 
@@ -222,6 +296,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
             setDisplayState((current) =>
               current.status === 'PAUSED' ? current : applyEvent(current, { type: 'PAUSE' }),
             );
+            setDatabaseReady(true);
             return;
           }
 
@@ -232,6 +307,8 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
               : { title: '尚未配置活动', subtitle: 'NO EVENT CONFIGURED' },
           );
           setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
+          setDatabaseReady(true);
+          requestInitialAdmin(eventCount, initialAdminRequestedRef);
           return;
         }
 
@@ -252,17 +329,18 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
         } else {
           setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
         }
+        setDatabaseReady(true);
       } catch (error) {
-        log('DATABASE_ERROR', { stage: 'boot', message: toErrorMessage(error) });
+        const message = toErrorMessage(error);
+        log('DATABASE_ERROR', { stage: 'boot', message });
 
         if (disposed) {
           return;
         }
 
         eventIdRef.current = undefined;
-        setDisplayState((current) =>
-          current.status === 'BOOT' ? applyEvent(current, { type: 'BOOT_READY' }) : current,
-        );
+        setBlockedMessage({ title: '系统数据暂时不可用', subtitle: 'DATABASE UNAVAILABLE' });
+        setDisplayState((current) => applyEvent(current, { type: 'DATABASE_FAILED', message }));
       }
     })();
 
@@ -274,60 +352,55 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
     };
   }, [db]);
 
-  // Re-evaluate event status when the kiosk regains focus (operator may have just
-  // paused/ended the event from /admin on the same machine). Only nudges toward a
-  // blocked/paused state and never disturbs an in-flight draw or auto-resumes.
+  // Dexie liveQuery propagates IndexedDB mutations across same-origin Electron
+  // windows through BroadcastChannel. The display therefore reacts immediately
+  // when staff clears a result or an operator activates/pauses an event.
   useEffect(() => {
-    const recheck = () => {
-      if (!mountedRef.current) {
-        return;
-      }
+    if (!databaseReady) return;
 
-      const status = stateRef.current.status;
-
-      if (status !== 'ATTRACT' && status !== 'PAUSED' && status !== 'BOOT') {
-        return;
-      }
-
-      if (commitInFlightRef.current) {
-        return;
-      }
-
-      void (async () => {
-        try {
-          const event = await getActiveEvent(db);
-
-          if (event) {
-            setBlockedMessage(null);
-            return;
-          }
-
-          const paused = await getLatestEventByStatus(db, 'PAUSED');
-
-          if (paused) {
-            if (stateRef.current.status !== 'PAUSED') {
-              setDisplayState((current) => applyEvent(current, { type: 'PAUSE' }));
-            }
-
-            return;
-          }
-
-          const eventCount = await db.events.count();
-          setBlockedMessage(
-            eventCount > 0
-              ? { title: '活动已结束', subtitle: 'EVENT ENDED' }
-              : { title: '尚未配置活动', subtitle: 'NO EVENT CONFIGURED' },
-          );
-        } catch (error) {
-          log('DATABASE_ERROR', { stage: 'focusRecheck', message: toErrorMessage(error) });
+    const subscription = liveQuery(() => readDisplayDatabaseSnapshot(db, eventIdRef.current)).subscribe({
+      next: (snapshot) => {
+        if (!mountedRef.current || commitInFlightRef.current) return;
+        if (syncErrorRef.current) {
+          syncErrorRef.current = false;
+          setSyncError(false);
         }
-      })();
-    };
+        reconcileDisplaySnapshot(snapshot, {
+          currentState: stateRef.current,
+          eventIdRef,
+          initialAdminRequestedRef,
+          resetInFlightRef,
+          scheduleReset,
+          setBlockedMessage,
+          setDisplayState,
+          setRevealedPrizeName,
+          setResultActionError,
+        });
+      },
+      error: (error) => {
+        const message = toErrorMessage(error);
+        log('DATABASE_ERROR', { code: 'DISPLAY_CONFIG_SYNC_FAILED', stage: 'liveQuery', message });
+        syncErrorRef.current = true;
+        setSyncError(true);
+        if (stateRef.current.status === 'RESULT') {
+          setResultActionError('配置同步失败，当前结果已安全保留，请联系工作人员。');
+        } else {
+          setBlockedMessage({ title: '配置同步失败', subtitle: 'DISPLAY CONFIG SYNC FAILED' });
+          setDisplayState((current) => applyEvent(current, { type: 'DATABASE_FAILED', message }));
+        }
+      },
+    });
 
-    window.addEventListener('focus', recheck);
+    return () => subscription.unsubscribe();
+  }, [databaseReady, db, scheduleReset, syncRetryNonce]);
 
-    return () => window.removeEventListener('focus', recheck);
-  }, [db]);
+  useEffect(() => {
+    if (!databaseReady) return;
+
+    return subscribeAppChanges(() => {
+      setSyncRetryNonce((current) => current + 1);
+    });
+  }, [databaseReady]);
 
   // Panel intro animation on status change (skipped under reduced-motion).
   useEffect(() => {
@@ -344,6 +417,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
   useEffect(() => {
     if (displayState.status === 'ATTRACT') {
       commitInFlightRef.current = false;
+      resetInFlightRef.current = false;
       setConfirmExit(false);
     }
   }, [displayState.status]);
@@ -364,6 +438,11 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
           <p className="display-eyebrow">{blockedMessage.subtitle}</p>
           <h1 id="display-title">{blockedMessage.title}</h1>
           <p className="display-copy">请联系现场工作人员处理</p>
+          {syncError ? (
+            <button className="primary-touch-target" type="button" onClick={() => setSyncRetryNonce((current) => current + 1)}>
+              重试同步
+            </button>
+          ) : null}
         </section>
       ) : isResult ? (
         <section className="display-result" ref={panelRef} aria-label="中奖结果">
@@ -382,6 +461,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
               {copy.action}
             </button>
           </div>
+          {resultActionError ? <p className="display-copy" role="alert">{resultActionError}</p> : null}
           {confirmExit ? (
             <div className="confirm-card" role="alertdialog" aria-label="确认结束当前中奖结果">
               <p>确认结束当前中奖结果？</p>
@@ -439,4 +519,128 @@ function toErrorMessage(value: unknown): string {
 
 function log(type: LogEntryType, details: Record<string, unknown>): void {
   logStructured(type, details);
+}
+
+async function readDisplayDatabaseSnapshot(
+  db: SignalHuntDatabase,
+  currentEventId?: string,
+): Promise<DisplayDatabaseSnapshot> {
+  const [events, sessions] = await Promise.all([
+    db.events.toArray(),
+    db.drawSessions.where('status').equals('COMMITTED').toArray(),
+    db.prizes.toArray(),
+  ]);
+  const activeEvent = latestEvent(events.filter((event) => event.status === 'ACTIVE'));
+  const pausedEvent = latestEvent(events.filter((event) => event.status === 'PAUSED'));
+  // Persisted configuration is authoritative. A backup restore can replace the
+  // active event id while this window is open, so do not keep watching a stale
+  // in-memory id ahead of the newly active/paused event.
+  const watchedEventId = activeEvent?.id ?? pausedEvent?.id ?? currentEventId;
+  const session = watchedEventId
+    ? sessions.find((candidate) => candidate.eventId === watchedEventId)
+    : undefined;
+  const record = session ? await db.drawRecords.get(session.committedRecordId) : undefined;
+
+  if (session && !record) {
+    throw new Error(`Committed draw record ${session.committedRecordId} was not found.`);
+  }
+
+  return {
+    activeEvent,
+    eventCount: events.length,
+    pausedEvent,
+    record,
+    session,
+  };
+}
+
+function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: DisplaySnapshotHandlers): void {
+  const {
+    currentState,
+    eventIdRef,
+    initialAdminRequestedRef,
+    resetInFlightRef,
+    scheduleReset,
+    setBlockedMessage,
+    setDisplayState,
+    setRevealedPrizeName,
+    setResultActionError,
+  } = handlers;
+
+  if (currentState.status === 'RESULT') {
+    if (snapshot.session || resetInFlightRef.current) return;
+
+    resetInFlightRef.current = true;
+    setDisplayState((current) =>
+      current.status === 'RESULT' ? applyEvent(current, { type: 'RESET_STARTED' }) : current,
+    );
+    scheduleReset(RESETTING_HOLD_MS);
+    return;
+  }
+
+  if (
+    currentState.status !== 'BOOT' &&
+    currentState.status !== 'ATTRACT' &&
+    currentState.status !== 'PAUSED' &&
+    currentState.status !== 'ERROR'
+  ) {
+    return;
+  }
+
+  if (snapshot.session && snapshot.record) {
+    eventIdRef.current = snapshot.session.eventId;
+    setBlockedMessage(null);
+    setResultActionError(undefined);
+    setRevealedPrizeName(snapshot.record.prizeNameSnapshot);
+    log('DRAW_RECOVERED', { recordId: snapshot.record.id, source: 'liveQuery' });
+    setDisplayState((current) => applyEvent(current, { type: 'DRAW_RECOVERED' }));
+    return;
+  }
+
+  if (snapshot.activeEvent) {
+    eventIdRef.current = snapshot.activeEvent.id;
+    setBlockedMessage(null);
+    setRevealedPrizeName(undefined);
+
+    if (currentState.status === 'BOOT') {
+      setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
+    } else if (currentState.status === 'PAUSED') {
+      setDisplayState((current) => applyEvent(current, { type: 'RESUME' }));
+    } else if (currentState.status === 'ERROR') {
+      setDisplayState((current) => applyEvent(current, { type: 'RESET_COMPLETE' }));
+    }
+    return;
+  }
+
+  eventIdRef.current = undefined;
+  if (snapshot.pausedEvent) {
+    setBlockedMessage(null);
+    if (currentState.status === 'BOOT' || currentState.status === 'ATTRACT') {
+      setDisplayState((current) => applyEvent(current, { type: 'PAUSE' }));
+    }
+    return;
+  }
+
+  setBlockedMessage(
+    snapshot.eventCount > 0
+      ? { title: '活动已结束', subtitle: 'EVENT ENDED' }
+      : { title: '尚未配置活动', subtitle: 'NO EVENT CONFIGURED' },
+  );
+  if (currentState.status === 'BOOT') {
+    setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
+  }
+  requestInitialAdmin(snapshot.eventCount, initialAdminRequestedRef);
+}
+
+function latestEvent(events: Event[]): Event | undefined {
+  return [...events].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+}
+
+function requestInitialAdmin(eventCount: number, requestedRef: MutableRefObject<boolean>): void {
+  if (eventCount !== 0 || requestedRef.current || !window.signalHuntDesktop) return;
+
+  requestedRef.current = true;
+  void window.signalHuntDesktop.control.openAdmin().catch((error) => {
+    log('DATABASE_ERROR', { stage: 'openInitialAdmin', message: toErrorMessage(error) });
+  });
 }

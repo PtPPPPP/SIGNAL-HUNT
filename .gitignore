@@ -2,7 +2,18 @@ dist
 node_modules
 *.local
 .vite-dev.*.log
+.vite-electron
+.codex-vite.*.log
+out
+release
 coverage
+/graphify-out/
+
+# Playwright E2E 产物（trace / 截图 / 视频 / 报告，仅本地与 CI 失败时生成）
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 
 # Claude Code 本地设置
 .claude/settings.local.json

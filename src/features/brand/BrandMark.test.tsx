@@ -1,10 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { BRAND_ASSETS } from './brandAssets';
+import { BRAND_ASSETS, createBrandAssetPath } from './brandAssets';
 import { BrandMark } from './BrandMark';
 
 describe('BrandMark', () => {
+  it('keeps the logo relative for packaged file URLs and rooted for browser development', () => {
+    expect(createBrandAssetPath('./')).toBe('./brand/quantum-design-logo.png');
+    expect(createBrandAssetPath('/')).toBe('/brand/quantum-design-logo.png');
+  });
+
   it('renders the configured logo image', () => {
     render(<BrandMark variant="on-light" />);
 

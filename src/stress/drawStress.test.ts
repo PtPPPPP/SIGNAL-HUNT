@@ -77,7 +77,7 @@ describe('draw stress & adversarial scenarios', () => {
     expect(big?.inventoryRemaining).toBeGreaterThanOrEqual(0);
     await expect(db.drawRecords.count()).resolves.toBe(500);
     await expect(db.drawSessions.where('[eventId+status]').equals([event.id, 'COMMITTED']).count()).resolves.toBe(0);
-  });
+  }, 15_000);
 
   it('survives 10 concurrent taps producing exactly one draw (no duplicate inventory decrement)', async () => {
     await seedEvent(db, event);

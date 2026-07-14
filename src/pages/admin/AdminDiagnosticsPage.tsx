@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { AdminButton } from '../../components/ui/AdminUI';
 import { signalHuntDatabase, type SignalHuntDatabase, DATABASE_NAME, DATABASE_VERSION } from '../../db/database';
 import { getActiveEvent, recoverCommittedDraw } from '../../db/drawRepository';
-import { readStructuredLog, type LogEntry } from '../../features/diagnostics/errorLog';
+import { clearStructuredLog } from '../../features/diagnostics/errorLog';
+import {
+  buildDiagnosticExport,
+  readLogs,
+  type DiagnosticLogLevel,
+  type DiagnosticLogRecord,
+} from '../../features/diagnostics/diagnosticLogStore';
+import { readCanvasMetrics, type CanvasMetrics } from '../../visual/signal-engine/canvasDiagnostics';
+import { BRAND_ASSETS } from '../../features/brand/brandAssets';
+import { DRAW_STATUS_LABELS, EVENT_STATUS_LABELS, formatAdminDateTime } from '../../features/admin/statusLabels';
 import { AdminLayout } from './AdminLayout';
 
 type AdminDiagnosticsPageProps = {
@@ -37,6 +47,7 @@ type VisualSnapshot = {
   canvasPresent: boolean;
   fps?: number;
   fpsSampling: boolean;
+  canvas: CanvasMetrics;
 };
 
 type EnvironmentSnapshot = {
@@ -78,7 +89,21 @@ type Snapshot = {
   visual: VisualSnapshot;
   storage: StorageSnapshot;
   preflight: PreflightSnapshot;
-  log: LogEntry[];
+  log: DiagnosticLogRecord[];
+};
+
+const initialCanvasMetrics: CanvasMetrics = {
+  fps: 0,
+  cssWidth: 0,
+  cssHeight: 0,
+  backingWidth: 0,
+  backingHeight: 0,
+  dpr: 0,
+  cappedDpr: 0,
+  maxDpr: 0,
+  rafRunning: false,
+  visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'unknown',
+  updatedAt: '',
 };
 
 const emptySnapshot: Snapshot = {
@@ -92,7 +117,7 @@ const emptySnapshot: Snapshot = {
   },
   database: { ok: false, schemaVersion: DATABASE_VERSION, counts: { events: 0, prizes: 0, records: 0, sessions: 0 } },
   draw: { hasActiveSession: false },
-  visual: { webgl: false, reducedMotion: false, canvasPresent: false, fpsSampling: false },
+  visual: { webgl: false, reducedMotion: false, canvasPresent: false, fpsSampling: false, canvas: initialCanvasMetrics },
   storage: { supported: false },
   preflight: { ready: false, checks: [] },
   log: [],
@@ -251,19 +276,14 @@ async function gatherPrizeSummary(db: SignalHuntDatabase): Promise<PrizeSummary>
   }
 }
 
-/** Probes the brand logo via HEAD so the preflight can flag a missing asset. */
+/** Loads the real image URL so file:// packaged builds are checked correctly. */
 async function checkLogoAsset(): Promise<boolean> {
-  if (typeof fetch !== 'function') {
-    return false;
-  }
-
-  try {
-    const response = await fetch('/brand/quantum-design-logo.png', { method: 'HEAD', cache: 'no-store' });
-
-    return response.ok;
-  } catch {
-    return false;
-  }
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(true);
+    image.onerror = () => resolve(false);
+    image.src = BRAND_ASSETS.logo;
+  });
 }
 
 /**
@@ -287,13 +307,13 @@ function computePreflight(args: {
       id: 'build',
       label: '生产构建',
       status: import.meta.env.PROD ? 'pass' : 'warn',
-      detail: import.meta.env.PROD ? 'production' : `当前 ${import.meta.env.MODE}（现场应使用生产构建）`,
+      detail: import.meta.env.PROD ? '生产模式' : `当前为开发模式（现场应使用生产构建）`,
     },
     {
       id: 'logo',
       label: '品牌 Logo 资源',
       status: logoOk ? 'pass' : 'fail',
-      detail: logoOk ? '/brand/quantum-design-logo.png 可访问' : 'Logo 缺失或不可访问',
+      detail: logoOk ? 'Quantum Design Logo 可访问' : 'Quantum Design Logo 缺失或不可访问',
     },
     {
       id: 'database',
@@ -317,7 +337,7 @@ function computePreflight(args: {
     },
     {
       id: 'inventory',
-      label: '库存一致（0 ≤ remaining ≤ total）',
+      label: '库存数据一致',
       status: prizeSummary.inventoryViolations.length === 0 ? 'pass' : 'fail',
       detail:
         prizeSummary.inventoryViolations.length === 0
@@ -351,6 +371,9 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
   });
   const [fps, setFps] = useState<number | undefined>(undefined);
   const [sampling, setSampling] = useState(false);
+  const [logLevel, setLogLevel] = useState<DiagnosticLogLevel | 'ALL'>('ALL');
+  const [logCode, setLogCode] = useState('ALL');
+  const [exporting, setExporting] = useState(false);
 
   const gather = useCallback(async () => {
     const [database, draw, storage, prizeSummary, logoOk] = await Promise.all([
@@ -361,6 +384,10 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
       checkLogoAsset(),
     ]);
     const environment = gatherEnvironment();
+    const log = await readLogs({
+      level: logLevel === 'ALL' ? undefined : logLevel,
+      code: logCode === 'ALL' ? undefined : logCode,
+    });
 
     setSnapshot({
       app: { version: __APP_VERSION__, mode: import.meta.env.MODE, route: location.pathname },
@@ -376,12 +403,37 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
         canvasPresent: typeof document !== 'undefined' && document.getElementsByTagName('canvas').length > 0,
         fps,
         fpsSampling: sampling,
+        canvas: readCanvasMetrics(),
       },
       storage,
       preflight: computePreflight({ database, draw, prizeSummary, logoOk, online: environment.online }),
-      log: readStructuredLog(),
+      log,
     });
-  }, [db, location.pathname, fps, sampling]);
+  }, [db, location.pathname, fps, sampling, logLevel, logCode]);
+
+  const handleClearLogs = useCallback(async () => {
+    clearStructuredLog();
+    await gather();
+  }, [gather]);
+
+  const handleExportLogs = useCallback(async () => {
+    setExporting(true);
+    try {
+      const bundle = await buildDiagnosticExport();
+      const json = JSON.stringify(bundle, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `signal-hunt-diagnostics-${formatExportStamp()}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }, []);
 
   useEffect(() => {
     void gather();
@@ -415,11 +467,11 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
   const { app, environment, database, draw, visual, storage } = snapshot;
 
   return (
-    <AdminLayout title="诊断">
+    <AdminLayout title="系统诊断" db={db}>
       <p className="admin-message">本页仅供现场工作人员排查使用，请勿向访客展示。</p>
 
       <section className="admin-table-wrap">
-        <h2>现场自检 / Preflight</h2>
+        <h2>现场运行自检</h2>
         <p className="admin-message">
           <strong>{snapshot.preflight.ready ? '✅ 就绪' : '⛔ 未就绪'}</strong>
           {snapshot.preflight.ready
@@ -455,17 +507,17 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
       </section>
 
       <div className="admin-metric-grid">
-        <MetricCard label="App 版本" value={app.version} />
-        <MetricCard label="构建模式" value={app.mode} />
+        <MetricCard label="应用版本" value={app.version} />
+        <MetricCard label="构建模式" value={app.mode === 'production' ? '生产模式' : '开发模式'} />
         <MetricCard label="当前路由" value={app.route} />
         <MetricCard label="在线状态" value={environment.online ? '在线' : '离线'} />
         <MetricCard label="视口" value={environment.viewport} />
-        <MetricCard label="DPR" value={String(environment.dpr)} />
+        <MetricCard label="设备像素比" value={String(environment.dpr)} />
         <MetricCard
           label="数据库"
           value={database.ok ? `正常 · v${database.schemaVersion}` : '异常'}
         />
-        <MetricCard label="FPS" value={visual.fpsSampling ? '采样中…' : visual.fps != null ? String(visual.fps) : '—'} />
+        <MetricCard label="画面帧率" value={visual.fpsSampling ? '采样中…' : visual.fps != null ? String(visual.fps) : '—'} />
       </div>
 
       <section className="admin-table-wrap">
@@ -473,13 +525,13 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
         <table className="admin-table">
           <tbody>
             <Row label="视口" value={environment.viewport} />
-            <Row label="设备像素比 (DPR)" value={String(environment.dpr)} />
+            <Row label="设备像素比" value={String(environment.dpr)} />
             <Row label="网络" value={environment.online ? '在线' : '离线'} />
             <Row label="IndexedDB 可用" value={environment.indexedDbAvailable ? '是' : '否'} />
-            <Row label="设备内存 (deviceMemory)" value={environment.deviceMemory != null ? `${environment.deviceMemory} GB` : '不可用'} />
+            <Row label="设备内存" value={environment.deviceMemory != null ? `${environment.deviceMemory} GB` : '不可用'} />
             <Row label="JS 堆已用" value={environment.jsHeapUsed != null ? formatBytes(environment.jsHeapUsed) : '不可用'} />
             <Row label="JS 堆上限" value={environment.jsHeapLimit != null ? formatBytes(environment.jsHeapLimit) : '不可用'} />
-            <Row label="User-Agent" value={environment.userAgent} />
+            <Row label="浏览器标识（技术详情）" value={environment.userAgent} />
           </tbody>
         </table>
       </section>
@@ -489,12 +541,12 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
         <table className="admin-table">
           <tbody>
             <Row label="数据库名" value={DATABASE_NAME} />
-            <Row label="Schema 版本" value={String(database.schemaVersion)} />
+            <Row label="数据结构版本" value={String(database.schemaVersion)} />
             <Row label="状态" value={database.ok ? '正常' : `异常：${database.error ?? '未知'}`} />
-            <Row label="活动 (events)" value={String(database.counts.events)} />
-            <Row label="奖项 (prizes)" value={String(database.counts.prizes)} />
-            <Row label="记录 (drawRecords)" value={String(database.counts.records)} />
-            <Row label="会话 (drawSessions)" value={String(database.counts.sessions)} />
+            <Row label="活动数量" value={String(database.counts.events)} />
+            <Row label="奖项数量" value={String(database.counts.prizes)} />
+            <Row label="记录数量" value={String(database.counts.records)} />
+            <Row label="会话数量" value={String(database.counts.sessions)} />
           </tbody>
         </table>
       </section>
@@ -503,10 +555,10 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
         <h2>抽奖状态</h2>
         <table className="admin-table">
           <tbody>
-            <Row label="当前活动" value={draw.activeEvent ? `${draw.activeEvent.name} (${draw.activeEvent.code}) · ${draw.activeEvent.status}` : '无激活活动'} />
+            <Row label="当前活动" value={draw.activeEvent ? `${draw.activeEvent.name} (${draw.activeEvent.code}) · ${eventStatusLabel(draw.activeEvent.status)}` : '无激活活动'} />
             <Row label="未结束中奖会话" value={draw.hasActiveSession ? `是 · ${draw.activeSessionRecordId ?? ''}` : '无'} />
-            <Row label="最新提交记录" value={draw.latestRecord ? `${draw.latestRecord.prizeName} · ${draw.latestRecord.status}` : '无'} />
-            <Row label="最新揭示结果" value={draw.latestRevealed ? `${draw.latestRevealed.prizeName} · ${draw.latestRevealed.revealedAt ?? '未记录'}` : '无'} />
+            <Row label="最新提交记录" value={draw.latestRecord ? `${draw.latestRecord.prizeName} · ${drawStatusLabel(draw.latestRecord.status)}` : '无'} />
+            <Row label="最新揭示结果" value={draw.latestRevealed ? `${draw.latestRevealed.prizeName} · ${formatAdminDateTime(draw.latestRevealed.revealedAt)}` : '无'} />
           </tbody>
         </table>
       </section>
@@ -515,10 +567,17 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
         <h2>视觉 / 渲染</h2>
         <table className="admin-table">
           <tbody>
-            <Row label="FPS（采样 1s）" value={visual.fpsSampling ? '采样中…' : visual.fps != null ? String(visual.fps) : '不可用'} />
-            <Row label="Canvas 已挂载" value={visual.canvasPresent ? '是' : '否'} />
+            <Row label="画布实时帧率" value={visual.canvas.fps > 0 ? String(visual.canvas.fps) : '—'} />
+            <Row label="一秒采样帧率" value={visual.fpsSampling ? '采样中…' : visual.fps != null ? String(visual.fps) : '不可用'} />
+            <Row label="画布显示尺寸" value={visual.canvas.cssWidth ? `${visual.canvas.cssWidth}×${visual.canvas.cssHeight}` : '—'} />
+            <Row label="画布缓冲区尺寸" value={visual.canvas.backingWidth ? `${visual.canvas.backingWidth}×${visual.canvas.backingHeight}` : '—'} />
+            <Row label="设备像素比" value={visual.canvas.dpr ? String(visual.canvas.dpr) : '—'} />
+            <Row label="限制后的像素比" value={visual.canvas.maxDpr ? `${visual.canvas.cappedDpr} / ${visual.canvas.maxDpr}` : '—'} />
+            <Row label="动画循环" value={visual.canvas.rafRunning ? '运行中' : '已暂停 / 未启动'} />
+            <Row label="页面可见性" value={visual.canvas.visibilityState} />
+            <Row label="画布已挂载" value={visual.canvasPresent ? '是' : '否'} />
             <Row label="WebGL 支持" value={visual.webgl ? '是' : '否'} />
-            <Row label="减弱动效 (prefers-reduced-motion)" value={visual.reducedMotion ? '已开启' : '未开启'} />
+            <Row label="减弱动效" value={visual.reducedMotion ? '已开启' : '未开启'} />
           </tbody>
         </table>
       </section>
@@ -527,7 +586,7 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
         <h2>存储</h2>
         <table className="admin-table">
           <tbody>
-            <Row label="Storage Estimate API" value={storage.supported ? '可用' : '不可用'} />
+            <Row label="存储空间估算" value={storage.supported ? '可用' : '不可用'} />
             <Row label="已用估算" value={storage.usage != null ? formatBytes(storage.usage) : '不可用'} />
             <Row label="配额估算" value={storage.quota != null ? formatBytes(storage.quota) : '不可用'} />
           </tbody>
@@ -535,24 +594,53 @@ export function AdminDiagnosticsPage({ db = signalHuntDatabase }: AdminDiagnosti
       </section>
 
       <section className="admin-table-wrap">
-        <h2>近期结构化事件（内存，最多 100 条）</h2>
+        <h2>诊断日志（持久化，最多 500 条）</h2>
+        <div className="admin-filter-row">
+          <label>
+            日志级别
+            <select value={logLevel} onChange={(event) => setLogLevel(event.target.value as DiagnosticLogLevel | 'ALL')}>
+              <option value="ALL">全部级别</option>
+              <option value="error">错误</option>
+              <option value="warn">警告</option>
+              <option value="info">信息</option>
+            </select>
+          </label>
+          <label>
+            错误代码
+            <input
+              value={logCode === 'ALL' ? '' : logCode}
+              placeholder="例如 DATABASE_ERROR，留空为全部"
+              onChange={(event) => setLogCode(event.target.value.trim() || 'ALL')}
+            />
+          </label>
+          <AdminButton onClick={() => void handleExportLogs()} disabled={exporting}>
+            {exporting ? '导出中…' : '导出诊断日志'}
+          </AdminButton>
+          <AdminButton variant="secondary" onClick={() => void handleClearLogs()}>
+            清空日志
+          </AdminButton>
+        </div>
         {snapshot.log.length === 0 ? (
-          <p className="admin-message">暂无事件。</p>
+          <p className="admin-message">暂无日志（所选筛选条件下）。</p>
         ) : (
           <table className="admin-table">
             <thead>
               <tr>
                 <th>时间</th>
-                <th>类型</th>
-                <th>详情</th>
+                <th>级别</th>
+                <th>代码</th>
+                <th>消息</th>
+                <th>技术上下文</th>
               </tr>
             </thead>
             <tbody>
-              {snapshot.log.map((entry, index) => (
-                <tr key={`${entry.timestamp}-${index}`}>
-                  <td>{entry.timestamp}</td>
-                  <td>{entry.type}</td>
-                  <td>{entry.details ? JSON.stringify(entry.details) : ''}</td>
+              {snapshot.log.map((entry) => (
+                <tr key={entry.id}>
+                  <td>{formatAdminDateTime(entry.timestamp)}</td>
+                  <td>{entry.level === 'error' ? '错误' : entry.level === 'warn' ? '警告' : '信息'}</td>
+                  <td>{entry.code}</td>
+                  <td>{entry.message}</td>
+                  <td>{entry.context ? JSON.stringify(entry.context) : ''}</td>
                 </tr>
               ))}
             </tbody>
@@ -581,6 +669,18 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function eventStatusLabel(status: string): string {
+  return status in EVENT_STATUS_LABELS
+    ? EVENT_STATUS_LABELS[status as keyof typeof EVENT_STATUS_LABELS]
+    : status;
+}
+
+function drawStatusLabel(status: string): string {
+  return status in DRAW_STATUS_LABELS
+    ? DRAW_STATUS_LABELS[status as keyof typeof DRAW_STATUS_LABELS]
+    : status;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;
@@ -595,4 +695,15 @@ function formatBytes(bytes: number): string {
   }
 
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/** Local-time stamp for the export filename: signal-hunt-diagnostics-YYYYMMDD-HHmmss.json. */
+function formatExportStamp(): string {
+  const date = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  return (
+    `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
+    `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+  );
 }

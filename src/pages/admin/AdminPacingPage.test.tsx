@@ -13,7 +13,7 @@ import { AdminPacingPage } from './AdminPacingPage';
 
 const event: Event = {
   id: 'event-1',
-  name: 'QD Expo',
+  name: 'Quantum Materials Expo 2026',
   code: 'QD-2026',
   status: 'ACTIVE',
   createdAt: '2026-07-06T00:00:00.000Z',
@@ -54,12 +54,14 @@ describe('AdminPacingPage', () => {
     await db.delete();
   });
 
-  it('edits first prize probability as a percentage and saves it as real weight', async () => {
+  it('edits prize probability inline and saves it as real weight', async () => {
     const user = userEvent.setup();
     renderPage();
+    await screen.findByText('准备就绪');
 
-    fireEvent.change(await screen.findByLabelText('一等奖中奖概率'), { target: { value: '2' } });
-    await user.click(screen.getByRole('button', { name: '自动平衡' }));
+    fireEvent.change(await screen.findByLabelText('一等奖 中奖概率'), { target: { value: '2' } });
+    await user.click(screen.getByRole('button', { name: '自动平衡到 100%' }));
+    await user.click(screen.getByRole('button', { name: '确认应用' }));
     await user.click(screen.getByRole('button', { name: '保存并应用' }));
 
     await waitFor(async () => {
@@ -72,21 +74,28 @@ describe('AdminPacingPage', () => {
   it('disables save and apply when total probability is not 100%', async () => {
     renderPage();
 
-    fireEvent.change(await screen.findByLabelText('一等奖中奖概率'), { target: { value: '2' } });
+    fireEvent.change(await screen.findByLabelText('一等奖 中奖概率'), { target: { value: '2' } });
 
-    expect(screen.getAllByText('超出 1.0%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('还差或超出 1.0%').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '保存并应用' })).toBeDisabled();
   });
 
-  it('auto balances total probability back to 100%', async () => {
+  it('shows an auto balance preview before changing other probabilities', async () => {
     const user = userEvent.setup();
     renderPage();
 
-    fireEvent.change(await screen.findByLabelText('一等奖中奖概率'), { target: { value: '2' } });
-    await user.click(screen.getByRole('button', { name: '自动平衡' }));
+    fireEvent.change(await screen.findByLabelText('一等奖 中奖概率'), { target: { value: '2' } });
+    await user.click(screen.getByRole('button', { name: '自动平衡到 100%' }));
+
+    const dialog = screen.getByRole('dialog', { name: '自动平衡预览' });
+
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('二等奖')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '确认应用' }));
 
     expect(screen.getAllByText('配置有效').length).toBeGreaterThan(0);
-    expect(screen.getByLabelText('一等奖中奖概率')).toHaveValue(2);
+    expect(screen.getByLabelText('一等奖 中奖概率')).toHaveValue(2);
   });
 
   it('does not change a locked prize during auto balance', async () => {
@@ -94,32 +103,48 @@ describe('AdminPacingPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '锁定 一等奖' }));
-    fireEvent.change(screen.getByLabelText('二等奖中奖概率'), { target: { value: '10' } });
-    await user.click(screen.getByRole('button', { name: '自动平衡' }));
+    fireEvent.change(screen.getByLabelText('二等奖 中奖概率'), { target: { value: '10' } });
+    await user.click(screen.getByRole('button', { name: '自动平衡到 100%' }));
+    await user.click(screen.getByRole('button', { name: '确认应用' }));
 
-    expect(screen.getByLabelText('一等奖中奖概率')).toHaveValue(1);
+    expect(screen.getByLabelText('一等奖 中奖概率')).toHaveValue(1);
     expect(screen.getAllByText('配置有效').length).toBeGreaterThan(0);
   });
 
-  it('shows inventory warning when estimated wins exceed remaining inventory', async () => {
+  it('shows inventory risk in plain operation language', async () => {
     renderPage();
 
     fireEvent.change(await screen.findByLabelText('预计参与人数'), { target: { value: '1000' } });
 
-    expect(await screen.findByText('当前配置预计需要约 10 件一等奖奖品，但当前库存只有 5 件')).toBeInTheDocument();
+    expect((await screen.findAllByText('库存风险')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/预计需要约 10 件/).length).toBeGreaterThan(0);
   });
 
-  it('hides advanced algorithm parameters in simple mode and shows them in advanced mode', async () => {
+  it('keeps simple mode free of advanced algorithm parameters', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: '中奖概率与发放策略', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByText('准备就绪')).toBeInTheDocument();
+    expect(screen.queryByText('高级算法参数')).not.toBeInTheDocument();
+    expect(screen.queryByText(/有效权重|响应强度|倍率/)).not.toBeInTheDocument();
+  });
+
+  it('shows advanced algorithm parameters only in advanced mode', async () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByRole('heading', { name: '抽奖概率与发放策略', level: 1 })).toBeInTheDocument();
-    expect(screen.queryByText('高级算法参数')).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: '高级模式' }));
+    await user.click(await screen.findByRole('button', { name: '高级模式' }));
 
     expect(screen.getAllByText('高级算法参数').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Base Weight/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/基础权重/).length).toBeGreaterThan(0);
+  });
+
+  it('warns when the page has unsaved changes', async () => {
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText('一等奖 中奖概率'), { target: { value: '2' } });
+
+    expect(screen.getAllByText('有未保存修改').length).toBeGreaterThan(0);
   });
 
   it('does not claim absolute effective probability for smart pacing', async () => {
@@ -136,7 +161,7 @@ describe('AdminPacingPage', () => {
 
     const row = await screen.findByRole('row', { name: /智能一等奖/ });
 
-    expect(within(row).getByText(/当前有效权重/)).toBeInTheDocument();
+    expect(within(row).getByText(/当前相对倍率/)).toBeInTheDocument();
     expect(within(row).queryByText(/当前有效概率/)).not.toBeInTheDocument();
   });
 

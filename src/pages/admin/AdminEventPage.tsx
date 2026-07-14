@@ -3,8 +3,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { listEvents, activateEvent, createEvent, endEvent, pauseEvent } from '../../db/eventRepository';
 import { EventRepositoryError } from '../../db/eventRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
-import type { Event, EventStatus } from '../../domain/draw/types';
+import type { Event } from '../../domain/draw/types';
 import { getEventValidationIssues, type EventValidationIssues } from '../../domain/draw/eventValidation';
+import { EVENT_STATUS_LABELS, formatAdminDateTime } from '../../features/admin/statusLabels';
+import { publishAppChange } from '../../features/sync/appSync';
 import { AdminLayout } from './AdminLayout';
 
 type AdminEventPageProps = {
@@ -27,13 +29,6 @@ const defaultForm: EventFormState = {
   endAt: '',
 };
 
-const STATUS_LABEL: Record<EventStatus, string> = {
-  DRAFT: '草稿',
-  ACTIVE: '激活中',
-  PAUSED: '已暂停',
-  ENDED: '已结束',
-};
-
 export function AdminEventPage({ db = signalHuntDatabase }: AdminEventPageProps) {
   const [events, setEvents] = useState<Event[]>([]);
   const [form, setForm] = useState<EventFormState>(defaultForm);
@@ -51,6 +46,7 @@ export function AdminEventPage({ db = signalHuntDatabase }: AdminEventPageProps)
   }, [refresh]);
 
   const activeEvent = events.find((event) => event.status === 'ACTIVE');
+  const hasUnsavedChanges = Object.values(form).some((value) => value.trim() !== '');
 
   const handleCreate = async () => {
     const draft: Event = {
@@ -80,6 +76,7 @@ export function AdminEventPage({ db = signalHuntDatabase }: AdminEventPageProps)
         endAt: draft.endAt,
         id: draft.id,
       });
+      publishAppChange('CONFIG_UPDATED', draft.id);
       setMessage(`活动「${draft.name}」已创建（草稿）。`);
       setForm(defaultForm);
       await refresh();
@@ -92,9 +89,10 @@ export function AdminEventPage({ db = signalHuntDatabase }: AdminEventPageProps)
     }
   };
 
-  const handleActivate = async (eventId: string) => {
+  const handleActivate = async (eventId: string, pauseExisting = false) => {
     try {
-      await activateEvent(db, eventId);
+      await activateEvent(db, eventId, { pauseExisting });
+      publishAppChange('EVENT_ACTIVATED', eventId);
       setMessage('活动已激活。');
       setPendingActivateId(null);
       await refresh();
@@ -106,24 +104,39 @@ export function AdminEventPage({ db = signalHuntDatabase }: AdminEventPageProps)
         return;
       }
 
+      if (error instanceof EventRepositoryError && error.code === 'EVENT_ALREADY_ENDED') {
+        setMessage('活动已结束，不能重新激活。');
+        return;
+      }
+
       setMessage(toErrorMessage(error));
     }
   };
 
   const handlePause = async (eventId: string) => {
-    await pauseEvent(db, eventId);
-    setMessage('活动已暂停。展示页将在下次进入时进入暂停态，已提交的中奖结果仍可恢复。');
-    await refresh();
+    try {
+      await pauseEvent(db, eventId);
+      publishAppChange('EVENT_PAUSED', eventId);
+      setMessage('活动已暂停。展示页已同步进入暂停状态，已提交的中奖结果仍会保留。');
+      await refresh();
+    } catch (error) {
+      setMessage(toErrorMessage(error));
+    }
   };
 
   const handleEnd = async (eventId: string) => {
-    await endEvent(db, eventId);
-    setMessage('活动已结束。历史记录与库存快照已保留。');
-    await refresh();
+    try {
+      await endEvent(db, eventId);
+      publishAppChange('EVENT_ENDED', eventId);
+      setMessage('活动已结束。展示页已同步，历史记录与库存快照已保留。');
+      await refresh();
+    } catch (error) {
+      setMessage(toErrorMessage(error));
+    }
   };
 
   return (
-    <AdminLayout title="活动">
+    <AdminLayout title="活动管理" db={db} hasUnsavedChanges={hasUnsavedChanges}>
       {activeEvent ? (
         <section className="admin-placeholder" aria-label="当前激活活动">
           <p>
@@ -205,18 +218,22 @@ export function AdminEventPage({ db = signalHuntDatabase }: AdminEventPageProps)
               <tr key={event.id}>
                 <td>{event.name}</td>
                 <td>{event.code}</td>
-                <td>{STATUS_LABEL[event.status]}</td>
+                <td>{EVENT_STATUS_LABELS[event.status]}</td>
                 <td>{formatWindow(event)}</td>
                 <td>
                   <div className="admin-actions admin-actions-inline">
-                    <button
-                      className="admin-button"
-                      type="button"
-                      disabled={event.status === 'ACTIVE'}
-                      onClick={() => void handleActivate(event.id)}
-                    >
-                      激活
-                    </button>
+                    {event.status === 'ENDED' ? (
+                      <span className="admin-message">活动已结束，不能重新激活</span>
+                    ) : (
+                      <button
+                        className="admin-button"
+                        type="button"
+                        disabled={event.status === 'ACTIVE'}
+                        onClick={() => void handleActivate(event.id)}
+                      >
+                        激活
+                      </button>
+                    )}
                     <button
                       className="admin-button secondary"
                       type="button"
@@ -259,7 +276,7 @@ export function AdminEventPage({ db = signalHuntDatabase }: AdminEventPageProps)
             <button
               className="confirm-button-ok"
               type="button"
-              onClick={() => void handleActivate(pendingActivateId)}
+              onClick={() => void handleActivate(pendingActivateId, true)}
             >
               确认并激活
             </button>
@@ -277,7 +294,7 @@ function formatWindow(event: Event): string {
     return '—';
   }
 
-  return [event.startAt ?? '?', event.endAt ?? '?'].join(' → ');
+  return [formatAdminDateTime(event.startAt), formatAdminDateTime(event.endAt)].join(' → ');
 }
 
 function toErrorMessage(value: unknown): string {

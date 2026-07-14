@@ -1,243 +1,116 @@
-# Reliability & Release Engineering
+# SIGNAL HUNT 可靠性与验收记录
 
-Single source of truth for how SIGNAL HUNT is verified before a trade show.
-Covers verification commands, the current reliability baseline, what the stress
-and burn-in suites actually prove, the release-readiness matrix, and the
-Windows/PowerShell gotchas that have bitten us before.
+本文是发布验收的事实来源。最后更新：2026-07-14。
 
-This is a local-first offline kiosk (AGENTS.md §5). There is **no Electron**
-and **no CI**; every gate below is a local npm script. "It builds" is not the
-same as "it is verified for the floor" — see the matrix.
+## 验收命令
 
----
+| 命令 | 验证内容 |
+| --- | --- |
+| `npm run lint` | 代码规范与 React Hooks 规则 |
+| `npm run typecheck` | TypeScript 全项目类型检查 |
+| `npm test` | 单元、组件、数据库和 Electron 主进程测试 |
+| `npm run test:e2e` | Chromium 中的完整业务流程与跨窗口同步 |
+| `npm run test:stress` | 连续抽奖、并发点击、恢复、离线与库存耗尽 |
+| `npm run test:perf` | 100 至 50,000 条目标记录下的数据库查询性能 |
+| `BURNIN_SECONDS=20 npm run burnin:short` | 20 秒连续抽奖与库存一致性检查 |
+| `npm run build` | 生产构建 |
+| `npm run preflight` | 构建文件、Logo、核心路由和演示数据开关检查 |
+| `npm run test:electron` | Electron 路由、快捷键、显示模式、持久化和 IPC |
+| `npm run electron:make` | Windows 解包程序、安装包和 ZIP |
+| `npm run electron:smoke` | 实际启动已打包程序，检查三种显示模式、重启持久化、双窗口、快捷键、返回大屏和 Logo |
 
-## 1. Verification commands
+Electron 打包必须使用 Node 22，或 Node 24.0 至 24.15。项目根目录的
+`.nvmrc` 固定为 24.15.0。Node 24.16 及以上会被脚本主动拒绝，因为当前
+Electron Forge 版本可能在打包收尾阶段无产物退出。本次打包实际使用 Node 24.14.0。
 
-| Command | What it runs | When | Approx. time |
-| --- | --- | --- | --- |
-| `npm run verify:quick` | lint → typecheck → unit tests → production build | every dev iteration | ~30–60 s |
-| `npm run verify:release` | verify:quick **+ stress suite** | before tagging a release | ~1–2 min |
-| `npm run verify:onsite` | verify:release **+ burn-in short (5 min) + preflight** | before doors open, on the show machine | ~6–7 min |
-| `npm run preflight` | static release checks (build, logo, offline, routes) | after `npm run build` | <1 s |
-| `npm run burnin:smoke` | 20 s burn-in | quick CI-style soak | ~20 s |
-| `npm run burnin:short` | 5 min burn-in (default) | release | ~5 min |
-| `npm run burnin:full` | 8 h burn-in | pre-show soak; **do not claim "full passed" unless it actually ran 8 h** | 8 h |
+## 当前自动化结果
 
-The 5-minute burn-in is deliberately kept out of `verify:quick` and `verify:release`
-so a fast check stays fast. It only enters `verify:onsite`.
+以下结果均来自 2026-07-14 当前工作区的实际运行：
 
-### Note on `verify:*` and the StaffPage test
+| 项目 | 结果 |
+| --- | --- |
+| ESLint | 通过，0 错误、0 警告 |
+| TypeScript | 通过 |
+| 单元与组件测试 | 本轮 205 通过、0 失败；目标页面 React `act(...)` 警告 0 条 |
+| Playwright E2E | 8 通过、0 失败 |
+| 压力测试 | 5 通过、0 失败 |
+| 性能测试 | 4 通过、0 失败 |
+| 20 秒烧机 | 2481 次抽奖、0 错误、记录与库存完全一致 |
+| 生产构建 | 通过 |
+| 静态预检 | 通过；1 条外部 URL 字符串复核提示 |
+| Electron 测试 | 9 通过、0 失败 |
+| Electron 产物 | 解包程序、安装包、ZIP 均生成并通过文件校验 |
+| 已打包程序冒烟 | 通过 |
 
-`verify:quick` / `verify:release` / `verify:onsite` all run the **full** unit
-suite, including `src/pages/staff/StaffPage.test.tsx`. During Phase 10B that test
-was red (a duplicate-redemption UI race, fixed by a parallel work stream). With
-that fix present in the working tree the suite is fully green (128/0, see §2).
-The gate is deliberately strict: if any unit test is red, `verify:*` fails at the
-test step and we do **not** skip the failing test to manufacture a green gate.
+性能测试的最重档为 50,000 条目标记录、150,000 条总记录：事件范围读取
+221.64 ms，最新记录读取 231.39 ms，按奖品统计 423.06 ms。数字受机器负载
+影响，只能与同机后续结果比较，不能当作所有现场电脑的固定性能承诺。
 
----
+静态预检报告的外部 URL 来自依赖包内的文档、命名空间或错误帮助地址。
+预检目前只报告字符串，不能证明存在运行时网络请求；应用业务数据仍只使用本地
+IndexedDB。正式布展仍需在诊断页确认数据库、活动、奖品和未处理会话状态。
 
-## 2. Current reliability baseline
+## 已验证的关键规则
 
-| Suite | Result | Notes |
-| --- | --- | --- |
-| `npm run typecheck` | PASS | `tsc -b` |
-| `npm run lint` | PASS | eslint flat config |
-| `npm test` (unit) | **128 PASS / 0 FAIL** | fully green with the StaffPage fix in the working tree (was 108/1 during Phase 10B before the fix landed) |
-| `npm run test:stress` | 5 PASS | adversarial repo-level tests, see §4 |
-| `npm run burnin:smoke` (20 s) | PASS | 2074 draws / 0 errors / `passed=true` / throughput 103.6 draws/s |
-| `npm run build` | PASS | production build |
-| Playwright / E2E | **NONE** | no e2e harness exists (AGENTS §29 wants one); see matrix |
+- 抽奖状态只能前进。`REDEEMED` 和 `VOIDED` 是终态，延迟揭晓不能覆盖终态。
+- 揭晓、兑奖、作废在数据库事务中重新读取最新记录；重复操作保持幂等。
+- 活动 `ENDED` 后不能重新激活；同一时刻最多一个 `ACTIVE` 活动。
+- 活动存在未结束抽奖结果时不能结束，必须先结束当前结果。
+- 备份恢复先做结构和业务校验。重复 ID、悬空引用、负库存、状态冲突、多个激活
+  活动、结束活动保留当前会话等都会在写入前阻止恢复。
+- 恢复在单个数据库事务内完成，写入后会重新读取并逐表核对；中途失败自动回滚。
+- 恢复成功后，大屏、工作人员页和后台会同步新活动、新奖品和当前结果。
+- 后台顶栏状态来自真实数据库，检查前显示状态未检查；检查后可显示无活动、活动
+  暂停、配置不完整、准备就绪和需要处理。未完成的外观设置入口与路由已隐藏。
+- Display Window 支持窗口、全屏和展会锁定三种模式；Control Window 始终保持普通
+  窗口。模式保存在 Electron 用户数据目录，重启继续使用，不进入业务数据库备份。
+- 返回大屏只聚焦 Display Window 并隐藏 Control Window；再次打开同一路由时保留原
+  窗口和 Renderer 状态。
 
----
+关键浏览器流程覆盖：一次点击只产生一次记录、刷新恢复同一结果、工作人员结束
+结果、单次兑奖与重复兑奖拦截、奖品导入与坏 JSON 拦截、库存耗尽、后台配置实时
+同步、坏备份不改数据库，以及合法恢复后的三页面同步。
 
-## 3. Test architecture
+## 备份恢复边界
 
-- **Runner**: Vitest, `environment: 'jsdom'`, `globals: true`. `vitest.setup.ts`
-  stubs `HTMLCanvasElement.getContext` to `null` so canvas code is exercised
-  against the "no context" path.
-- **Two configs**:
-  - `vite.config.ts` → base suite; **excludes** `src/stress` and `src/burn-in` so
-    `npm test` stays fast and deterministic.
-  - `vitest.reliability.config.ts` → **includes only** stress + burn-in, invoked
-    explicitly by `npm run test:stress` and the burn-in scripts.
-- **IndexedDB**: each reliability test imports `fake-indexeddb/auto` and creates
-  a fresh Dexie DB per test (`crypto.randomUUID()` name), deleted in `afterEach`.
-  This exercises the **real** `drawRepository` commit/recovery path against a
-  faithful IndexedDB shim — not a mocked result.
+备份包含活动、奖品、抽奖记录和当前抽奖会话，不包含诊断日志。恢复会完整替换这
+四张表；页面在恢复前保留一份内存回滚快照。回滚快照只在当前页面会话中存在，
+关闭页面后不会保留，因此正式恢复前仍应下载一份 JSON 备份。
 
----
+无效备份绝不会先清空数据库。若底层写入或复核失败，事务回滚，恢复前数据保持
+不变。已在当前数据库中结束的活动不能通过旧备份恢复为其他状态。
 
-## 4. Stress coverage — what the 5 tests actually prove
+## 依赖审计
 
-`src/stress/drawStress.test.ts`, run via `npm run test:stress`. Each test seeds a
-real Dexie DB and drives `commitPersistentDraw` / `recoverCommittedDraw`.
+`npm audit --omit=dev`：0 个生产依赖漏洞。
 
-| # | Test (it-title) | Category | What it asserts |
-| --- | --- | --- | --- |
-| 1 | runs 500 sequential draw cycles with no duplicate active draw, no negative inventory, exact record count | **500 draws** · **duplicate active session** | 500 cycles; a second commit before `clearActiveDrawSession` is refused with `ACTIVE_DRAW_EXISTS`; inventory 100000 → 99500; `drawRecords.count() === 500`; no leftover `COMMITTED` sessions. |
-| 2 | survives 10 concurrent taps producing exactly one draw | **rapid tap** · **concurrent commit** | 10 simultaneous `commitPersistentDraw` → exactly **1 fulfilled, 9 rejected** (`ACTIVE_DRAW_EXISTS`); inventory decremented exactly once; 1 record. |
-| 3 | refresh recovery: a committed draw is recoverable from any post-commit phase without redrawing | **recovery** | `recoverCommittedDraw` returns the **same** record id + session id from `SCANNING` / `SEARCHING` / `RESULT`; a re-commit while active is refused; `drawRecords.count() === 1`. |
-| 4 | offline: draws commit and recover with `navigator.onLine === false` | **offline** | Forces `navigator.onLine = false`; commit + recover succeed with no network dependency. |
-| 5 | exhausts inventory cleanly | **inventory exhaustion** | Single prize `remaining = 1`; first draw succeeds, second rejected `/No active prize/`; remaining hits 0 (never negative); 1 record preserved. |
+完整 `npm audit`：24 个开发依赖问题，其中 21 个高危、3 个低危。问题位于
+Electron Forge 打包工具链的传递依赖，主要是 `tar` 与 `tmp`，不会进入网页运行时
+业务依赖。当前审计结果明确显示没有可用修复，本次没有为掩盖审计结果而强制改动
+依赖。发布前应继续限制打包输入为可信本地项目文件，并在上游发布修复后重新执行
+全部 Electron 产物与启动验收。
 
-So the categories the project cares about map as: rapid tap → #2, concurrent
-commit → #2 (+ #1 per-cycle), inventory exhaustion → #5, recovery → #3,
-500 draws → #1, duplicate active session → #1 + #2, offline → #4.
+## 尚未验证，禁止写成“已通过”
 
----
+- 5 分钟 `npm run burnin:short`：本次未运行。
+- 8 小时 `npm run burnin:full`：本次未运行。
+- 真实 3840×2160 显示器布局、缩放和持续帧率：本次未在 4K 硬件验证。
+- 真实触摸屏手势与防误触：本次使用鼠标/自动化点击，不等于触摸硬件验收。
+- 突然断电、强制结束进程后的冷启动恢复：恢复逻辑有自动化覆盖，但未做物理断电。
+- 安装包在最终展会电脑上的安装、权限、显卡驱动和多屏摆放：必须在目标机器确认。
 
-## 5. Burn-in
+已打包程序的自动冒烟只证明程序能启动，三种显示模式可切换且重启保持，Control
+Window 不被全屏或锁定，以及双窗口、快捷键、返回大屏和 Logo 正常。业务状态机和
+数据库流程由同一生产代码的单元、压力及 Playwright E2E 覆盖，不应把桌面冒烟描述
+成完整的现场硬件验收。
 
-`src/burn-in/burnInRunner.ts` + `src/burn-in/burnIn.test.ts`, launched cross-platform
-by `scripts/burnin.mjs` (which sets `BURNIN_SECONDS` inside Node — bash-style
-`BURNIN_SECONDS=20 npm run ...` does **not** work under PowerShell/cmd).
+## Windows 现场检查
 
-### Modes
-
-| Mode | Duration | Command |
-| --- | --- | --- |
-| smoke | 20 s | `npm run burnin:smoke` |
-| short | 5 min (default) | `npm run burnin:short` |
-| full | 8 h | `npm run burnin:full` |
-| custom | any | `$env:BURNIN_SECONDS=60; npm run burnin:short` (PowerShell) · `node scripts/burnin.mjs 60` |
-
-### What it does
-
-Repeatedly commits a real draw and clears the session for the requested
-duration against the real repository (no mocks beyond the IndexedDB shim). Each
-cycle must decrement exactly one inventory unit and create exactly one record.
-This is a **domain + persistence** burn-in, not a visual/Canvas burn-in (that
-needs a real browser kiosk and is a manual step).
-
-### Invariants enforced (failure → non-zero exit)
-
-The runner computes a self-describing verdict. `report.passed === true` requires
-ALL of:
-
-- `errorCount === 0` (any thrown error — including a duplicate `ACTIVE_DRAW_EXISTS`
-  or transient DB error — fails the run)
-- `stoppedReason === 'duration'` (ran the full target, not stopped by cap/exhaustion)
-- `recordCount === drawCount` (every draw produced exactly one durable record)
-- `inventoryDecrement === drawCount` (every draw reserved exactly one unit)
-- no negative inventory — aggregate OR per-prize
-- ran ≥ 90% of the requested duration
-
-### Report fields (printed as `[burn-in FINAL]` JSON)
-
-`startedAt` · `endedAt` · `durationTargetSeconds` · `durationActualSeconds` ·
-`cycles` · `draws` · `success` · `errors` · `errorSamples` · `stoppedReason` ·
-`records` · `inventoryDecrement` · `remainingInventorySum` ·
-`throughputDrawsPerSec` · `heapDelta` · `passed` · `violations` · `config`.
-
-If `passed` is false, read `violations` for the precise cause.
-
----
-
-## 6. Preflight — split between CLI (static) and /diagnostics (runtime)
-
-A Node CLI cannot read the browser's IndexedDB, so preflight is intentionally
-split. Neither half fakes what it cannot do.
-
-### `npm run preflight` (`scripts/preflight.mjs`) — static checks
-
-- production build exists (`dist/index.html`) — HARD FAIL if missing
-- brand logo present at source **and** copied into `dist/` — HARD FAIL if missing at source
-- no external `http(s)` URLs baked into the bundle (local-first, AGENTS §5) — WARNING (review)
-- core routes present in the bundle (`/display`, `/diagnostics`, `/staff`, `/admin/dashboard`) — WARNING if not found as literals
-- `VITE_ENABLE_DEMO_SEED` not set to `true` in any `.env` — WARNING
-
-Exit code: `0` = pass, `1` = hard failure. Warnings do not fail.
-
-### `/diagnostics` → 现场自检 / Preflight panel — runtime checks
-
-Composed from live DB state, with a single **就绪 / 未就绪** verdict. `ready`
-requires none of these to fail:
-
-- production build (vs dev mode) — warn
-- brand Logo reachable via HEAD request — fail if missing
-- database accessible (`database.ok`) — fail
-- an active event exists — fail
-- ≥ 1 enabled prize with `remaining > 0` — fail
-- inventory sane (`0 ≤ remaining ≤ total`) for every prize — fail on violation
-- no unresolved committed draw session — warn if one exists
-- network status — informational (offline is **not** a failure; the app is local-first)
-
----
-
-## 7. Release Readiness Matrix
-
-Legend: ✅ Verified by automated test · 🟡 Implemented, manually verified ·
-🔶 Implemented, **not** verified · ⛔ Not verified · 🛠 Known issue (fix in progress)
-
-| Capability | Implemented | Automated | Manual | Status |
-| --- | --- | --- | --- | --- |
-| Secure random (`crypto.getRandomValues`, not `Math.random`) | yes (`drawService.ts`) | drawService tests | — | ✅ |
-| Weighted selection (effective weight) | yes | drawService + stress #1 | — | ✅ |
-| Inventory decrement (one unit per draw) | yes | drawService + stress #1/#2 | — | ✅ |
-| Zero-inventory exclusion from pool | yes | drawService + stress #5 | — | ✅ |
-| Active draw guard (one draw per event) | yes (`ACTIVE_DRAW_EXISTS`) | stress #1/#2 | — | ✅ |
-| Duplicate active session refused | yes | stress #1/#2 | — | ✅ |
-| Refresh recovery (same result, no redraw) | yes | stress #3 | — | ✅ |
-| Offline draw + recovery | yes (local-first) | stress #4 | — | ✅ |
-| 500-draw soak, exact accounting | yes | stress #1 | — | ✅ |
-| Long-run domain/persistence stability | yes | burn-in (smoke/short) | full 8 h | 🟡 |
-| Staff redemption | yes | `StaffPage.test.tsx` | — | ✅ (green in working tree; Staff fix from parallel stream, pending commit) |
-| Duplicate redemption block | yes | `StaffPage.test.tsx` | — | ✅ (was red during Phase 10B, now green) |
-| Result manual stay (no auto-reset) | yes | displayTransition tests | kiosk | 🟡 |
-| Prize JSON import | yes | `AdminPrizesPage.test` + `prizeValidation.test` | — | ✅ |
-| Prize field validation | yes | `prizeValidation.test` | — | ✅ |
-| Probability modes (FIXED / TIME_RELEASE / SMART_PACING) | yes | drawService + pacing | UI | 🟡 |
-| Diagnostics page (version/DB/event/canvas/FPS/errors) | yes | — | browser | 🟡 |
-| Preflight (static CLI) | yes | — | run `npm run preflight` | 🟡 |
-| Touch-screen interaction (one tap → one draw) | yes | — | **no e2e** | 🔶 manual only |
-| 1920×1080 target | yes | — | on display machine | 🔶 |
-| 2560×1440 / 3840×2160 (4K) | yes | — | on display machine | 🔶 |
-| App restart (browser reload) | yes | stress #3 (recovery) | cold reload on kiosk | 🟡 |
-| Power-loss / crash recovery | yes (recovery path) | stress #3 (analog) | pull power on kiosk | 🔶 |
-| E2E (touch → reveal → reset, no Playwright) | **no** | — | — | ⛔ gap (AGENTS §29) |
-
-**Reading the matrix:** ✅ items are safe to ship on. 🟡 need a sign-off run on
-the show machine. 🔶 must be performed manually on the kiosk before doors — they
-are not covered by automation. ⛔ is an acknowledged gap. Do not promote 🔶/⛔ to
-"verified" by running `npm run build`.
-
----
-
-## 8. Windows / PowerShell / UTF-8
-
-PowerShell can render Chinese / UTF-8 console output as mojibake. That is a
-**console-encoding artifact, not file corruption** — the source files are valid
-UTF-8. Rules:
-
-- **Searching Chinese content**: use `rg` (ripgrep), not `Select-String`/`Get-Content`.
-  `rg` decodes UTF-8 correctly. (The Claude Code Grep tool uses ripgrep.)
-- **Node reading files**: always pass `'utf8'` to `readFileSync` / `readFile`.
-- **PowerShell reading files in a script**: set
-  `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` and prefer
-  `Get-Content -Encoding UTF8` / `Out-File -Encoding utf8`.
-- **Passing env vars to npm**: bash `BURNIN_SECONDS=20 npm run ...` does NOT work
-  in PowerShell/cmd. Use `$env:BURNIN_SECONDS=20; npm run burnin:short`, or the
-  cross-platform `node scripts/burnin.mjs <mode>`.
-- Do **not** re-encode source files repo-wide. Do **not** "fix" mojibake by
-  editing a file you have not read as UTF-8.
-
----
-
-## 9. Git workspace safety
-
-The working tree is frequently dirty (in-flight work from multiple streams).
-Discipline:
-
-- Before changing anything: `git status --short` — know what is already modified.
-- After changing: `git status --short` — confirm only your intended files moved.
-- **Never** run destructive operations unless explicitly authorized:
-  - `git reset --hard`
-  - `git clean -fd`
-  - `git checkout .` / `git restore .`
-  - `git stash`
-- Do **not** auto-commit or auto-push. Commits are manual and intentional.
-- Do **not** commit another stream's uncommitted work as a side effect of your own.
-- `AGENTS.md` §34 (Change Discipline) already requires the smallest coherent
-  change + relevant checks + an exact report of what changed. This section is the
-  git-level corollary.
+1. 在目标电脑安装或解压当前产物，断网启动。
+2. 打开诊断页，确认数据库、活动、奖品库存、Canvas 与未处理会话状态。
+3. 用真实触摸屏完成抽奖、提前兑奖、提前作废、结束展示和重新进入待机。
+4. 验证 1920×1080 及现场实际分辨率；如使用 4K，必须单独签字确认。
+5. 导出备份，先用故意损坏的副本确认恢复被拦截，再恢复合法副本并核对三页面。
+6. 运行 5 分钟烧机；如现场要求长稳，提前完成 8 小时烧机。
+7. 安装包路径：`out/make/squirrel.windows/x64/SIGNAL-HUNT-Setup.exe`；ZIP 路径：
+   `out/make/zip/win32/x64/SIGNAL HUNT-win32-x64-0.9.0-beta.zip`。

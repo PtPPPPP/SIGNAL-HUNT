@@ -69,6 +69,14 @@ describe('event repository lifecycle', () => {
     await expect(db.events.get(event.id)).resolves.toMatchObject({ status: 'ACTIVE' });
   });
 
+  it('reactivates a PAUSED event', async () => {
+    const event = await createEvent(db, { name: 'A', code: 'C1', status: 'PAUSED' });
+
+    await activateEvent(db, event.id);
+
+    await expect(db.events.get(event.id)).resolves.toMatchObject({ status: 'ACTIVE' });
+  });
+
   it('refuses to activate a second event without confirmation and leaves both untouched', async () => {
     const first = await createEvent(db, {
       name: 'A',
@@ -181,6 +189,79 @@ describe('event repository lifecycle', () => {
 
     await expect(db.events.get(event.id)).resolves.toMatchObject({ status: 'ENDED' });
     await expect(db.events.count()).resolves.toBe(1);
+  });
+
+  it('refuses to end an event while a committed draw is still active', async () => {
+    const { commitPersistentDraw, seedPrizes } = await import('./drawRepository');
+    const event = await createEvent(db, { name: 'A', code: 'C1', status: 'ACTIVE' });
+    await seedPrizes(db, [
+      {
+        id: 'p1',
+        name: '一等奖',
+        shortName: '一等',
+        level: 1,
+        inventoryTotal: 1,
+        inventoryRemaining: 1,
+        weight: 1,
+        enabled: true,
+      },
+    ]);
+    await commitPersistentDraw(db, {
+      eventId: event.id,
+      random: () => 0,
+      createId: (prefix) => `${prefix}-active`,
+    });
+
+    await expect(endEvent(db, event.id)).rejects.toMatchObject({ code: 'EVENT_HAS_ACTIVE_DRAW' });
+    await expect(db.events.get(event.id)).resolves.toMatchObject({ status: 'ACTIVE' });
+    await expect(db.drawSessions.count()).resolves.toBe(1);
+  });
+
+  it('treats ENDED as terminal and refuses reactivation', async () => {
+    const ended = await createEvent(db, {
+      name: 'A',
+      code: 'C1',
+      status: 'PAUSED',
+      now: () => '2026-07-06T00:00:00.000Z',
+    });
+
+    await endEvent(db, ended.id);
+
+    await expect(activateEvent(db, ended.id)).rejects.toMatchObject({
+      code: 'EVENT_ALREADY_ENDED',
+      name: 'EventRepositoryError',
+    });
+    await expect(db.events.get(ended.id)).resolves.toMatchObject({ status: 'ENDED' });
+  });
+
+  it('allows at most one ACTIVE event when two windows activate concurrently', async () => {
+    const first = await createEvent(db, { name: 'A', code: 'C1' });
+    const second = await createEvent(db, { name: 'B', code: 'C2' });
+    const secondWindow = createSignalHuntDatabase(db.name);
+    await secondWindow.open();
+    let attempts: PromiseSettledResult<void>[];
+
+    try {
+      attempts = await Promise.allSettled([
+        activateEvent(db, first.id),
+        activateEvent(secondWindow, second.id),
+      ]);
+    } finally {
+      secondWindow.close();
+    }
+
+    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === 'rejected')).toHaveLength(1);
+    await expect(db.events.where('status').equals('ACTIVE').count()).resolves.toBe(1);
+  });
+
+  it('refuses direct creation of a second ACTIVE event', async () => {
+    await createEvent(db, { name: 'A', code: 'C1', status: 'ACTIVE' });
+
+    await expect(
+      createEvent(db, { name: 'B', code: 'C2', status: 'ACTIVE' }),
+    ).rejects.toMatchObject({ code: 'ACTIVE_EVENT_EXISTS' });
+    await expect(db.events.where('status').equals('ACTIVE').count()).resolves.toBe(1);
   });
 
   it('lists events newest-first and resolves the latest by status', async () => {

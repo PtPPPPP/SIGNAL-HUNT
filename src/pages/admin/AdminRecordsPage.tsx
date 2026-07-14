@@ -4,17 +4,11 @@ import { EmptyState, StatusBadge } from '../../components/ui/AdminUI';
 import { listDrawRecords, listPrizes } from '../../db/adminRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import type { DrawRecord, Prize } from '../../domain/draw/types';
+import { DRAW_STATUS_LABELS, formatAdminDateTime } from '../../features/admin/statusLabels';
 import { AdminLayout } from './AdminLayout';
 
 type AdminRecordsPageProps = {
   db?: SignalHuntDatabase;
-};
-
-const STATUS_LABEL: Record<DrawRecord['status'], string> = {
-  COMMITTED: 'COMMITTED',
-  REVEALED: 'REVEALED',
-  REDEEMED: 'REDEEMED',
-  VOIDED: 'VOIDED',
 };
 
 export function AdminRecordsPage({ db = signalHuntDatabase }: AdminRecordsPageProps) {
@@ -56,17 +50,17 @@ export function AdminRecordsPage({ db = signalHuntDatabase }: AdminRecordsPagePr
   );
 
   return (
-    <AdminLayout title="Records">
+    <AdminLayout title="抽奖记录" db={db}>
       <section className="admin-panel">
         <div className="admin-panel-header">
           <div>
-            <p>Filters</p>
+            <p>筛选条件</p>
             <h2>记录筛选</h2>
           </div>
         </div>
         <div className="admin-filter-row">
           <label>
-            Prize
+            奖项
             <select value={prizeFilter} onChange={(event) => setPrizeFilter(event.target.value)}>
               <option value="ALL">全部奖项</option>
               {prizes.map((prize) => (
@@ -77,17 +71,17 @@ export function AdminRecordsPage({ db = signalHuntDatabase }: AdminRecordsPagePr
             </select>
           </label>
           <label>
-            Status
+            记录状态
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="ALL">全部状态</option>
-              <option value="COMMITTED">COMMITTED</option>
-              <option value="REVEALED">REVEALED</option>
-              <option value="REDEEMED">REDEEMED</option>
-              <option value="VOIDED">VOIDED</option>
+              <option value="COMMITTED">已锁定</option>
+              <option value="REVEALED">已揭晓</option>
+              <option value="REDEEMED">已兑奖</option>
+              <option value="VOIDED">已作废</option>
             </select>
           </label>
           <label>
-            Redeemed
+            兑奖状态
             <select value={redeemedFilter} onChange={(event) => setRedeemedFilter(event.target.value)}>
               <option value="ALL">全部</option>
               <option value="REDEEMED">已兑奖</option>
@@ -100,36 +94,36 @@ export function AdminRecordsPage({ db = signalHuntDatabase }: AdminRecordsPagePr
       <section className="admin-panel">
         <div className="admin-panel-header">
           <div>
-            <p>Draw Records</p>
+            <p>数据记录</p>
             <h2>抽奖记录</h2>
           </div>
-          <StatusBadge tone="neutral">{filteredRecords.length} rows</StatusBadge>
+          <StatusBadge tone="neutral">共 {filteredRecords.length} 条</StatusBadge>
         </div>
         {filteredRecords.length > 0 ? (
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Time</th>
-                <th>Prize</th>
-                <th>Event</th>
-                <th>Status</th>
-                <th>Redeemed</th>
-                <th>Redeemed At</th>
-                <th>Participant</th>
-                <th>Actions</th>
+                <th>时间</th>
+                <th>奖项</th>
+                <th>活动</th>
+                <th>记录状态</th>
+                <th>是否兑奖</th>
+                <th>兑奖时间</th>
+                <th>参与者</th>
+                <th>处理位置</th>
               </tr>
             </thead>
             <tbody>
               {filteredRecords.map((record) => (
                 <tr key={record.id}>
-                  <td>{formatDateTime(record.committedAt)}</td>
+                  <td>{formatAdminDateTime(record.committedAt)}</td>
                   <td>{record.prizeNameSnapshot}</td>
                   <td>{record.eventId}</td>
                   <td>
-                    <StatusBadge tone={toneForRecord(record)}>{STATUS_LABEL[record.status]}</StatusBadge>
+                    <StatusBadge tone={toneForRecord(record)}>{DRAW_STATUS_LABELS[record.status]}</StatusBadge>
                   </td>
                   <td>{record.redeemed ? '是' : '-'}</td>
-                  <td>{record.redeemedAt ? formatDateTime(record.redeemedAt) : '-'}</td>
+                  <td>{formatAdminDateTime(record.redeemedAt)}</td>
                   <td>{record.participantId ?? '-'}</td>
                   <td>在 /staff 处理</td>
                 </tr>
@@ -154,8 +148,4 @@ function toneForRecord(record: DrawRecord) {
   }
 
   return 'brand';
-}
-
-function formatDateTime(value: string): string {
-  return value.replace('T', ' ').slice(0, 19);
 }

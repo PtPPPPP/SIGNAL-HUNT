@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { AdminButton, StatusBadge } from '../../components/ui/AdminUI';
+import { ReturnToDisplayButton } from '../../components/ui/ReturnToDisplayButton';
 import { BrandMark } from '../../features/brand/BrandMark';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import {
@@ -12,6 +13,9 @@ import {
   type DrawRepositoryError,
 } from '../../db/drawRepository';
 import type { CommitDrawResult } from '../../domain/draw/types';
+import { logStructured } from '../../features/diagnostics/errorLog';
+import { formatAdminDateTime } from '../../features/admin/statusLabels';
+import { publishAppChange, subscribeAppChanges } from '../../features/sync/appSync';
 
 type StaffPageProps = {
   db?: SignalHuntDatabase;
@@ -41,17 +45,24 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
   }, [db]);
 
   const endCurrentResult = useCallback(async () => {
-    const event = await getActiveEvent(db);
+    try {
+      const event = await getActiveEvent(db);
 
-    if (!event) {
-      setMessage('当前没有进行中的活动。');
-      return;
+      if (!event) {
+        setMessage('当前没有进行中的活动。');
+        return;
+      }
+
+      await clearActiveDrawSession(db, event.id);
+      publishAppChange('DRAW_DISPLAY_ENDED', event.id);
+      setMessage('已结束当前结果。展示页将自动返回待机。');
+      setConfirmVoid(false);
+      await refresh();
+    } catch (error) {
+      const errorMessage = toErrorMessage(error);
+      logStructured('DATABASE_ERROR', { stage: 'staffEndResult', message: errorMessage });
+      setMessage('结束当前结果失败，原结果仍然保留，请重试。');
     }
-
-    await clearActiveDrawSession(db, event.id);
-    setMessage('已结束当前结果。展示页将在下次进入时回到待机。');
-    setConfirmVoid(false);
-    await refresh();
   }, [db, refresh]);
 
   const confirmRedemption = useCallback(async () => {
@@ -76,6 +87,7 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
 
     try {
       const result = await redeemDrawRecord(db, activeDraw.record.id);
+      publishAppChange('CONFIG_UPDATED', result.record.eventId);
 
       if (redeemRequestIdRef.current !== requestId) {
         return;
@@ -99,7 +111,8 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
       await refresh();
     } catch (error) {
       if (redeemRequestIdRef.current === requestId) {
-        setMessage(error instanceof Error ? error.message : String(error));
+        logStructured('DATABASE_ERROR', { stage: 'staffRedeem', message: toErrorMessage(error) });
+        setMessage('兑奖操作失败，请重试；如仍失败请打开系统诊断。');
       }
     } finally {
       if (redeemRequestIdRef.current === requestId) {
@@ -119,29 +132,49 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
   }, [voidReason]);
 
   const confirmVoidRecord = useCallback(async () => {
-    const event = await getActiveEvent(db);
-
-    if (!event) {
-      setMessage('当前没有进行中的活动。');
-      return;
-    }
-
     try {
-      await voidActiveDraw(db, { eventId: event.id, reason: voidReason });
+      const event = await getActiveEvent(db);
+
+      if (!event) {
+        setMessage('当前没有进行中的活动。');
+        return;
+      }
+
+      await voidActiveDraw(db, {
+        eventId: event.id,
+        recordId: activeDraw?.record.id,
+        reason: voidReason,
+      });
+      publishAppChange('DRAW_DISPLAY_ENDED', event.id);
       setMessage('记录已作废。库存未自动恢复。');
       setVoidReason('');
       setConfirmVoid(false);
       await refresh();
     } catch (error) {
+      logStructured('DATABASE_ERROR', { stage: 'staffVoid', message: toErrorMessage(error) });
       setMessage(toStaffErrorMessage(error));
       setConfirmVoid(false);
-      await refresh();
     }
-  }, [db, refresh, voidReason]);
+  }, [activeDraw?.record.id, db, refresh, voidReason]);
 
   useEffect(() => {
-    void refresh();
+    void refresh().catch((error) => {
+      const message = toErrorMessage(error);
+      logStructured('DATABASE_ERROR', { stage: 'staffRefresh', message });
+      setMessage('工作人员数据读取失败，请重试或打开诊断页面。');
+    });
   }, [refresh]);
+
+  useEffect(
+    () =>
+      subscribeAppChanges(() => {
+        void refresh().catch((error) => {
+          logStructured('DATABASE_ERROR', { stage: 'staffSyncRefresh', message: toErrorMessage(error) });
+          setMessage('同步最新数据失败，请重试或打开诊断页面。');
+        });
+      }),
+    [refresh],
+  );
 
   // 快捷键：Ctrl + Shift + E（结束当前结果）。避开浏览器 Ctrl+Shift+R 硬刷新。
   useEffect(() => {
@@ -159,13 +192,14 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
   return (
     <main className="staff-shell">
       <header className="staff-header">
+        <ReturnToDisplayButton />
         <BrandMark variant="on-light" />
         <div>
-          <p>Live Operations</p>
+          <p>现场运营</p>
           <h1>工作人员现场操作</h1>
         </div>
         <StatusBadge tone={hasActiveResult ? 'brand' : 'success'}>
-          {hasActiveResult ? 'RESULT ACTIVE' : 'STANDBY'}
+          {hasActiveResult ? '结果展示中' : '等待操作'}
         </StatusBadge>
       </header>
 
@@ -173,7 +207,7 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
         <article className="staff-current-card">
           <div className="admin-panel-header">
             <div>
-              <p>Current Draw</p>
+              <p>当前抽奖</p>
               <h2>当前中奖卡片</h2>
             </div>
           </div>
@@ -182,33 +216,33 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
           <section className="staff-record-panel" aria-label="当前中奖记录">
             <dl className="staff-record-list">
               <div>
-                <dt>Prize</dt>
+                <dt>奖项</dt>
                 <dd>{activeDraw.record.prizeNameSnapshot}</dd>
               </div>
               <div>
-                <dt>Time</dt>
-                <dd>{activeDraw.record.committedAt.replace('T', ' ').slice(0, 19)}</dd>
+                <dt>抽奖时间</dt>
+                <dd>{formatAdminDateTime(activeDraw.record.committedAt)}</dd>
               </div>
               <div>
-                <dt>Status</dt>
-                <dd>{activeDraw.record.redeemed ? 'REDEEMED' : 'NOT REDEEMED'}</dd>
+                <dt>兑奖状态</dt>
+                <dd>{activeDraw.record.redeemed ? '已兑奖' : '未兑奖'}</dd>
               </div>
               <div>
-                <dt>Record</dt>
+                <dt>记录编号</dt>
                 <dd>{activeDraw.record.id}</dd>
               </div>
               <div>
-                <dt>Redeemed At</dt>
-                <dd>{activeDraw.record.redeemedAt ?? '—'}</dd>
+                <dt>兑奖时间</dt>
+                <dd>{formatAdminDateTime(activeDraw.record.redeemedAt)}</dd>
               </div>
               <div>
-                <dt>Display</dt>
+                <dt>大屏状态</dt>
                 <dd>展示中</dd>
               </div>
             </dl>
             {activeDraw.record.redeemed ? (
               <p className="staff-redeemed-note">
-                {`已于 ${activeDraw.record.redeemedAt ?? '未知时间'} 完成兑奖`}
+                {`已于 ${formatAdminDateTime(activeDraw.record.redeemedAt)} 完成兑奖`}
               </p>
             ) : null}
           </section>
@@ -222,7 +256,7 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
         <article className="staff-operation-card">
           <div className="admin-panel-header">
             <div>
-              <p>Actions</p>
+              <p>操作</p>
               <h2>现场操作</h2>
             </div>
           </div>
@@ -287,9 +321,17 @@ function toStaffErrorMessage(error: unknown): string {
     return '已兑奖记录不能直接作废。';
   }
 
+  if (code === 'DRAW_ALREADY_VOIDED') {
+    return '已作废记录不能兑奖。';
+  }
+
   if (code === 'VOID_REASON_REQUIRED') {
     return '作废必须填写原因。';
   }
 
+  return '操作失败，请重试；如仍失败请打开系统诊断。';
+}
+
+function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

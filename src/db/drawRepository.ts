@@ -8,6 +8,8 @@ export type DrawRepositoryErrorCode =
   | 'ACTIVE_DRAW_NOT_FOUND'
   | 'DRAW_RECORD_NOT_FOUND'
   | 'DRAW_ALREADY_REDEEMED'
+  | 'DRAW_ALREADY_VOIDED'
+  | 'DRAW_RECORD_MISMATCH'
   | 'VOID_REASON_REQUIRED';
 
 export class DrawRepositoryError extends Error {
@@ -32,8 +34,18 @@ export type RedeemDrawResult =
   | { status: 'REDEEMED'; record: DrawRecord }
   | { status: 'ALREADY_REDEEMED'; record: DrawRecord };
 
+export type RevealDrawResult =
+  | { status: 'REVEALED'; record: DrawRecord }
+  | { status: 'ALREADY_REVEALED'; record: DrawRecord }
+  | { status: 'TERMINAL_STATE'; record: DrawRecord };
+
+export type VoidDrawResult =
+  | { status: 'VOIDED'; record: DrawRecord }
+  | { status: 'ALREADY_VOIDED'; record: DrawRecord };
+
 export type VoidActiveDrawInput = {
   eventId: string;
+  recordId?: string;
   reason: string;
   now?: () => string;
 };
@@ -66,7 +78,12 @@ export async function commitPersistentDraw(
       throw new DrawRepositoryError('ACTIVE_DRAW_EXISTS', 'An active draw already exists for this event.');
     }
 
-    const [prizes, records] = await Promise.all([db.prizes.toArray(), db.drawRecords.toArray()]);
+    // Load only the active event's records via the indexed `eventId` column.
+    // Pacing (countWins / min-interval) is per-event, so reading the whole table
+    // across every event was both slower than necessary and semantically leaky
+    // (a later event would inherit an earlier event's win history). The prizes
+    // table is tiny and must be returned in full, so it stays a toArray().
+    const [prizes, records] = await Promise.all([db.prizes.toArray(), getRecordsByEvent(db, input.eventId)]);
     const committed = commitDraw({
       event,
       prizes,
@@ -115,8 +132,46 @@ export async function recoverCommittedDraw(
   });
 }
 
-export async function getActiveEvent(db: SignalHuntDatabase): Promise<Event | undefined> {
-  const activeEvents = await db.events.where('status').equals('ACTIVE').toArray();
+/**
+ * All draw records for one event, resolved via the indexed `eventId` column
+ * instead of a full-table scan. This is the scoped read pacing and the commit
+ * path now use; prefer it over `drawRecords.toArray()` whenever the caller knows
+ * the event.
+ */
+export async function getRecordsByEvent(db: SignalHuntDatabase, eventId: string): Promise<DrawRecord[]> {
+  return db.drawRecords.where('eventId').equals(eventId).toArray();
+}
+
+/**
+ * Indexed win count for a single prize within an event, excluding voided draws.
+ * Uses the [eventId+prizeId] compound index (schema v3) to avoid loading rows.
+ */
+export async function countWinsByPrize(
+  db: SignalHuntDatabase,
+  eventId: string,
+  prizeId: string,
+): Promise<number> {
+  const rows = await db.drawRecords.where('[eventId+prizeId]').equals([eventId, prizeId]).toArray();
+
+  return rows.filter((record) => record.status !== 'VOIDED').length;
+}
+
+/**
+ * Indexed count of redeemed records for an event via the [eventId+status] compound
+ * index (schema v3). AVOIDS scanning the whole records table for redemption stats.
+ */
+export async function countRedeemedByEvent(db: SignalHuntDatabase, eventId: string): Promise<number> {
+  return db.drawRecords.where('[eventId+status]').equals([eventId, 'REDEEMED']).count();
+}
+
+/** The most recently committed record for an event (newest committedAt), if any. */
+export async function getLatestRecord(db: SignalHuntDatabase, eventId: string): Promise<DrawRecord | undefined> {
+  const records = await db.drawRecords.where('eventId').equals(eventId).sortBy('committedAt');
+
+  return records.at(-1);
+}
+
+export async function getActiveEvent(db: SignalHuntDatabase): Promise<Event | undefined> {  const activeEvents = await db.events.where('status').equals('ACTIVE').toArray();
 
   if (activeEvents.length === 0) {
     return undefined;
@@ -129,12 +184,20 @@ export async function markDrawRevealed(
   db: SignalHuntDatabase,
   recordId: string,
   now: () => string = () => new Date().toISOString(),
-): Promise<void> {
-  await db.transaction('rw', db.drawRecords, async () => {
+): Promise<RevealDrawResult> {
+  return db.transaction('rw', db.drawRecords, async () => {
     const record = await db.drawRecords.get(recordId);
 
     if (!record) {
-      throw new Error('Draw record was not found.');
+      throw new DrawRepositoryError('DRAW_RECORD_NOT_FOUND', 'Draw record was not found.');
+    }
+
+    if (record.status === 'REDEEMED' || record.status === 'VOIDED') {
+      return { status: 'TERMINAL_STATE', record };
+    }
+
+    if (record.status === 'REVEALED') {
+      return { status: 'ALREADY_REVEALED', record };
     }
 
     const revealedRecord: DrawRecord = {
@@ -144,6 +207,8 @@ export async function markDrawRevealed(
     };
 
     await db.drawRecords.put(revealedRecord);
+
+    return { status: 'REVEALED', record: revealedRecord };
   });
 }
 
@@ -177,6 +242,10 @@ export async function redeemDrawRecord(
       };
     }
 
+    if (record.status === 'VOIDED') {
+      throw new DrawRepositoryError('DRAW_ALREADY_VOIDED', 'Voided draw cannot be redeemed.');
+    }
+
     const redeemedRecord: DrawRecord = {
       ...record,
       redeemed: true,
@@ -196,7 +265,7 @@ export async function redeemDrawRecord(
 export async function voidActiveDraw(
   db: SignalHuntDatabase,
   input: VoidActiveDrawInput,
-): Promise<{ record: DrawRecord }> {
+): Promise<VoidDrawResult> {
   const reason = input.reason.trim();
 
   if (!reason) {
@@ -209,8 +278,33 @@ export async function voidActiveDraw(
       .equals([input.eventId, 'COMMITTED'])
       .first();
 
+    if (!session && input.recordId) {
+      const existingRecord = await db.drawRecords.get(input.recordId);
+
+      if (!existingRecord) {
+        throw new DrawRepositoryError('DRAW_RECORD_NOT_FOUND', 'Draw record was not found.');
+      }
+
+      if (existingRecord.status === 'VOIDED') {
+        return { status: 'ALREADY_VOIDED', record: existingRecord };
+      }
+
+      if (existingRecord.status === 'REDEEMED' || existingRecord.redeemed) {
+        throw new DrawRepositoryError('DRAW_ALREADY_REDEEMED', 'Redeemed draw cannot be voided.');
+      }
+
+      throw new DrawRepositoryError('ACTIVE_DRAW_NOT_FOUND', 'Active draw was not found.');
+    }
+
     if (!session) {
       throw new DrawRepositoryError('ACTIVE_DRAW_NOT_FOUND', 'Active draw was not found.');
+    }
+
+    if (input.recordId && input.recordId !== session.committedRecordId) {
+      throw new DrawRepositoryError(
+        'DRAW_RECORD_MISMATCH',
+        'The requested draw is no longer the active draw.',
+      );
     }
 
     const record = await db.drawRecords.get(session.committedRecordId);
@@ -219,7 +313,12 @@ export async function voidActiveDraw(
       throw new DrawRepositoryError('DRAW_RECORD_NOT_FOUND', 'Draw record was not found.');
     }
 
-    if (record.redeemed) {
+    if (record.status === 'VOIDED') {
+      await db.drawSessions.delete(session.id);
+      return { status: 'ALREADY_VOIDED', record };
+    }
+
+    if (record.status === 'REDEEMED' || record.redeemed) {
       throw new DrawRepositoryError('DRAW_ALREADY_REDEEMED', 'Redeemed draw cannot be voided.');
     }
 
@@ -233,6 +332,6 @@ export async function voidActiveDraw(
     await db.drawRecords.put(voidedRecord);
     await db.drawSessions.delete(session.id);
 
-    return { record: voidedRecord };
+    return { status: 'VOIDED', record: voidedRecord };
   });
 }

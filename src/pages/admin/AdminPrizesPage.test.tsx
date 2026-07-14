@@ -30,7 +30,7 @@ describe('AdminPrizesPage', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText('Prize JSON'), {
+    fireEvent.change(screen.getByLabelText('奖品 JSON'), {
       target: {
         value: JSON.stringify([
         {
@@ -85,14 +85,14 @@ describe('AdminPrizesPage', () => {
 
     fireEvent.change(screen.getByLabelText('奖项名称'), { target: { value: 'Smart Prize' } });
     fireEvent.change(screen.getByLabelText('简称'), { target: { value: 'Smart' } });
-    await user.selectOptions(screen.getByLabelText('Probability Mode'), 'SMART_PACING');
+    await user.selectOptions(screen.getByLabelText('概率模式'), 'SMART_PACING');
     fireEvent.change(screen.getByLabelText('总量'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('剩余'), { target: { value: '3' } });
-    fireEvent.change(screen.getByLabelText('Base Weight'), { target: { value: '2' } });
-    fireEvent.change(screen.getByLabelText('Minimum Multiplier'), { target: { value: '0.3' } });
-    fireEvent.change(screen.getByLabelText('Maximum Multiplier'), { target: { value: '2.5' } });
-    fireEvent.change(screen.getByLabelText('Sensitivity'), { target: { value: '0.7' } });
-    fireEvent.change(screen.getByLabelText('Release Schedule'), { target: { value: '09:00,1\n11:00,2' } });
+    fireEvent.change(screen.getByLabelText('基础权重'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('最小倍率'), { target: { value: '0.3' } });
+    fireEvent.change(screen.getByLabelText('最大倍率'), { target: { value: '2.5' } });
+    fireEvent.change(screen.getByLabelText('响应强度'), { target: { value: '0.7' } });
+    fireEvent.change(screen.getByLabelText('释放计划'), { target: { value: '09:00,1\n11:00,2' } });
 
     await user.click(screen.getByRole('button', { name: '保存奖品' }));
 
@@ -124,10 +124,10 @@ describe('AdminPrizesPage', () => {
 
     fireEvent.change(screen.getByLabelText('奖项名称'), { target: { value: 'Bad Schedule' } });
     fireEvent.change(screen.getByLabelText('简称'), { target: { value: 'Bad' } });
-    await user.selectOptions(screen.getByLabelText('Probability Mode'), 'TIME_RELEASE');
+    await user.selectOptions(screen.getByLabelText('概率模式'), 'TIME_RELEASE');
     fireEvent.change(screen.getByLabelText('总量'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('剩余'), { target: { value: '3' } });
-    fireEvent.change(screen.getByLabelText('Release Schedule'), { target: { value: '09:00,2\n11:00,1' } });
+    fireEvent.change(screen.getByLabelText('释放计划'), { target: { value: '09:00,2\n11:00,1' } });
 
     await user.click(screen.getByRole('button', { name: '保存奖品' }));
 
@@ -146,11 +146,11 @@ describe('AdminPrizesPage', () => {
 
     fireEvent.change(screen.getByLabelText('奖项名称'), { target: { value: 'Locked Prize' } });
     fireEvent.change(screen.getByLabelText('简称'), { target: { value: 'Locked' } });
-    await user.selectOptions(screen.getByLabelText('Probability Mode'), 'TIME_RELEASE');
-    fireEvent.change(screen.getByLabelText('Base Weight'), { target: { value: '5' } });
-    fireEvent.change(screen.getByLabelText('Release Schedule'), { target: { value: '00:00,0' } });
+    await user.selectOptions(screen.getByLabelText('概率模式'), 'TIME_RELEASE');
+    fireEvent.change(screen.getByLabelText('基础权重'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('释放计划'), { target: { value: '00:00,0' } });
 
-    expect(await screen.findByText('LOCKED')).toBeInTheDocument();
+    expect(await screen.findByText('暂时锁定')).toBeInTheDocument();
     expect(screen.getAllByText('0.00').length).toBeGreaterThan(0);
   });
 });

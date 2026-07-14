@@ -1,52 +1,82 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { liveQuery } from 'dexie';
 import { NavLink } from 'react-router-dom';
 
 import { StatusBadge } from '../../components/ui/AdminUI';
+import { ReturnToDisplayButton } from '../../components/ui/ReturnToDisplayButton';
+import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import { BrandMark } from '../../features/brand/BrandMark';
+import {
+  readSystemReadiness,
+  type SystemReadiness,
+} from '../../features/admin/systemReadiness';
 
 type AdminLayoutProps = {
   title: string;
   eyebrow?: string;
+  hasUnsavedChanges?: boolean;
+  db?: SignalHuntDatabase;
   children: ReactNode;
 };
 
 const navGroups = [
   {
-    label: 'Overview',
-    items: [{ to: '/admin/dashboard', label: 'Dashboard', icon: 'D' }],
+    label: '概览',
+    items: [{ to: '/admin/dashboard', label: '控制台概览', icon: '概' }],
   },
   {
-    label: 'Exhibition',
+    label: '展会运营',
     items: [
-      { to: '/admin/event', label: 'Activities', icon: 'A' },
-      { to: '/admin/prizes', label: 'Prizes', icon: 'P' },
+      { to: '/admin/event', label: '活动管理', icon: '活' },
+      { to: '/admin/prizes', label: '奖品管理', icon: '奖' },
       { to: '/admin/pacing', label: '概率策略', icon: '%' },
-      { to: '/admin/records', label: 'Records', icon: 'R' },
+      { to: '/admin/records', label: '抽奖记录', icon: '录' },
     ],
   },
   {
-    label: 'Operations',
+    label: '现场操作',
     items: [
-      { to: '/staff', label: 'Staff', icon: 'S' },
-      { to: '/diagnostics', label: 'Diagnostics', icon: 'X' },
+      { to: '/staff', label: '工作人员操作', icon: '员' },
+      { to: '/diagnostics', label: '系统诊断', icon: '诊' },
     ],
   },
   {
-    label: 'System',
+    label: '系统',
     items: [
-      { to: '/admin/appearance', label: 'Appearance', icon: 'V' },
-      { to: '/admin/system', label: 'Settings', icon: 'C' },
+      { to: '/admin/system', label: '系统设置', icon: '设' },
     ],
   },
 ];
 
-export function AdminLayout({ title, eyebrow = 'Quantum Design Exhibition Control Center', children }: AdminLayoutProps) {
+export function AdminLayout({
+  title,
+  eyebrow = 'Quantum Design 展会控制中心',
+  hasUnsavedChanges = false,
+  db = signalHuntDatabase,
+  children,
+}: AdminLayoutProps) {
   const [currentTime, setCurrentTime] = useState(() => formatTime(new Date()));
+  const [readiness, setReadiness] = useState<SystemReadiness>({
+    label: '状态未检查',
+    tone: 'neutral',
+  });
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setCurrentTime(formatTime(new Date())), 30_000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const subscription = liveQuery(() => readSystemReadiness(db)).subscribe({
+      next: (next) =>
+        setReadiness((current) =>
+          current.label === next.label && current.tone === next.tone ? current : next,
+        ),
+      error: () => setReadiness({ label: '数据库异常', tone: 'danger' }),
+    });
+
+    return () => subscription.unsubscribe();
+  }, [db]);
 
   return (
     <main className="admin-shell">
@@ -55,7 +85,7 @@ export function AdminLayout({ title, eyebrow = 'Quantum Design Exhibition Contro
           <BrandMark variant="on-light" />
           <div>
             <strong>SIGNAL HUNT</strong>
-            <span>Exhibition Control</span>
+            <span>展会控制中心</span>
           </div>
         </div>
 
@@ -82,21 +112,22 @@ export function AdminLayout({ title, eyebrow = 'Quantum Design Exhibition Contro
 
       <section className="admin-workspace">
         <header className="admin-topbar">
-          <div>
+          <div className="admin-topbar-heading">
+            <ReturnToDisplayButton hasUnsavedChanges={hasUnsavedChanges} />
             <p>{eyebrow}</p>
             <h1>{title}</h1>
           </div>
           <div className="admin-topbar-status" aria-label="系统状态">
             <div>
-              <span>MODE</span>
-              <StatusBadge tone="neutral">OFFLINE MODE</StatusBadge>
+              <span>运行模式</span>
+              <StatusBadge tone="neutral">离线模式</StatusBadge>
             </div>
             <div>
-              <span>SYSTEM</span>
-              <StatusBadge tone="success">READY</StatusBadge>
+              <span>系统状态</span>
+              <StatusBadge tone={readiness.tone}>{readiness.label}</StatusBadge>
             </div>
             <div>
-              <span>LOCAL TIME</span>
+              <span>本地时间</span>
               <strong>{currentTime}</strong>
             </div>
           </div>

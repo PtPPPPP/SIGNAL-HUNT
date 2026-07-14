@@ -7,6 +7,11 @@
  *
  * 替换 Logo 时：把文件放到该路径即可；若改了文件名，只需同步修改下面的 logo 字段。
  */
+export function createBrandAssetPath(baseUrl: string): string {
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  return `${normalizedBase}brand/quantum-design-logo.png`;
+}
+
 export const BRAND_ASSETS = {
-  logo: '/brand/quantum-design-logo.png',
+  logo: createBrandAssetPath(import.meta.env.BASE_URL),
 } as const;

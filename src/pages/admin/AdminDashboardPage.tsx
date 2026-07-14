@@ -7,6 +7,12 @@ import { getActiveEvent } from '../../db/drawRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import { calculatePrizePacing } from '../../domain/draw/prizePacing';
 import type { DrawRecord, Event, Prize } from '../../domain/draw/types';
+import {
+  DRAW_STATUS_LABELS,
+  EVENT_STATUS_LABELS,
+  PACING_STATUS_LABELS,
+  formatAdminDateTime,
+} from '../../features/admin/statusLabels';
 import { AdminLayout } from './AdminLayout';
 
 type AdminDashboardPageProps = {
@@ -69,7 +75,7 @@ export function AdminDashboardPage({ db = signalHuntDatabase }: AdminDashboardPa
   );
 
   return (
-    <AdminLayout title="Dashboard">
+    <AdminLayout title="控制台概览" db={db}>
       {loading ? <section className="admin-panel">正在读取本机数据...</section> : null}
       {error ? <section className="admin-panel admin-error">读取失败：{error}</section> : null}
 
@@ -84,22 +90,24 @@ export function AdminDashboardPage({ db = signalHuntDatabase }: AdminDashboardPa
         <article className="admin-panel">
           <div className="admin-panel-header">
             <div>
-              <p>Current Exhibition</p>
+              <p>当前展会</p>
               <h2>{activeEvent?.name ?? '未激活活动'}</h2>
             </div>
-            <StatusBadge tone={activeEvent ? 'success' : 'warning'}>{activeEvent?.status ?? 'NO ACTIVE EVENT'}</StatusBadge>
+            <StatusBadge tone={activeEvent ? 'success' : 'warning'}>
+              {activeEvent ? EVENT_STATUS_LABELS[activeEvent.status] : '没有进行中的活动'}
+            </StatusBadge>
           </div>
           <dl className="admin-definition-grid">
             <div>
-              <dt>Code</dt>
+              <dt>活动代码</dt>
               <dd>{activeEvent?.code ?? '-'}</dd>
             </div>
             <div>
-              <dt>Window</dt>
+              <dt>活动时间</dt>
               <dd>{formatWindow(activeEvent)}</dd>
             </div>
             <div>
-              <dt>Records</dt>
+              <dt>抽奖记录</dt>
               <dd>{summary.drawRecordCount}</dd>
             </div>
           </dl>
@@ -108,7 +116,7 @@ export function AdminDashboardPage({ db = signalHuntDatabase }: AdminDashboardPa
         <article className="admin-panel">
           <div className="admin-panel-header">
             <div>
-              <p>Prize Pacing Overview</p>
+              <p>发放节奏</p>
               <h2>中奖节奏概览</h2>
             </div>
           </div>
@@ -119,10 +127,10 @@ export function AdminDashboardPage({ db = signalHuntDatabase }: AdminDashboardPa
                 return (
                   <div className="pacing-summary-row" key={snapshot.prizeId}>
                     <strong>{prize?.name ?? snapshot.prizeId}</strong>
-                    <span>Expected {snapshot.expectedWins}</span>
-                    <span>Actual {snapshot.actualWins}</span>
-                    <span>{snapshot.multiplier.toFixed(2)}x</span>
-                    <StatusBadge tone={toneForPacing(snapshot.status)}>{snapshot.status}</StatusBadge>
+                    <span>预计 {snapshot.expectedWins}</span>
+                    <span>实际 {snapshot.actualWins}</span>
+                    <span>{snapshot.multiplier.toFixed(2)} 倍</span>
+                    <StatusBadge tone={toneForPacing(snapshot.status)}>{PACING_STATUS_LABELS[snapshot.status]}</StatusBadge>
                   </div>
                 );
               })}
@@ -137,7 +145,7 @@ export function AdminDashboardPage({ db = signalHuntDatabase }: AdminDashboardPa
         <article className="admin-panel">
           <div className="admin-panel-header">
             <div>
-              <p>Prize Inventory Overview</p>
+              <p>奖品库存</p>
               <h2>库存状态</h2>
             </div>
           </div>
@@ -158,7 +166,7 @@ export function AdminDashboardPage({ db = signalHuntDatabase }: AdminDashboardPa
         <article className="admin-panel">
           <div className="admin-panel-header">
             <div>
-              <p>Prize Release Pace</p>
+              <p>奖品发放进度</p>
               <h2>累计中奖曲线</h2>
             </div>
           </div>
@@ -169,28 +177,28 @@ export function AdminDashboardPage({ db = signalHuntDatabase }: AdminDashboardPa
       <section className="admin-panel">
         <div className="admin-panel-header">
           <div>
-            <p>Recent Draws</p>
+            <p>最近抽奖</p>
             <h2>最近记录</h2>
           </div>
-          <Link className="admin-link-button" to="/admin/records">View All</Link>
+          <Link className="admin-link-button" to="/admin/records">查看全部</Link>
         </div>
         {recentRecords.length > 0 ? (
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Time</th>
-                <th>Prize</th>
-                <th>Redeemed</th>
-                <th>Status</th>
+                <th>时间</th>
+                <th>奖项</th>
+                <th>兑奖状态</th>
+                <th>记录状态</th>
               </tr>
             </thead>
             <tbody>
               {recentRecords.map((record) => (
                 <tr key={record.id}>
-                  <td>{formatDateTime(record.committedAt)}</td>
+                  <td>{formatAdminDateTime(record.committedAt)}</td>
                   <td>{record.prizeNameSnapshot}</td>
                   <td>{record.redeemed ? '是' : '-'}</td>
-                  <td><StatusBadge tone={record.redeemed ? 'success' : 'brand'}>{record.status}</StatusBadge></td>
+                  <td><StatusBadge tone={record.redeemed ? 'success' : 'brand'}>{DRAW_STATUS_LABELS[record.status]}</StatusBadge></td>
                 </tr>
               ))}
             </tbody>
@@ -221,13 +229,13 @@ function InventoryRow({ prize }: { prize: Prize }) {
     <div className="inventory-row">
       <div>
         <strong>{prize.name}</strong>
-        <span>{prize.inventoryRemaining} / {prize.inventoryTotal} Remaining</span>
+        <span>{prize.inventoryRemaining} / {prize.inventoryTotal} 剩余</span>
       </div>
       <div className="inventory-progress" aria-label={`${prize.name} 剩余库存`}>
         <span style={{ width: `${Math.round(remainingRatio * 100)}%` }} />
       </div>
       <StatusBadge tone={status === 'HEALTHY' ? 'success' : status === 'LOW' ? 'warning' : 'danger'}>
-        {status}
+        {status === 'HEALTHY' ? '库存正常' : status === 'LOW' ? '库存偏低' : '库存已空'}
       </StatusBadge>
     </div>
   );
@@ -255,10 +263,10 @@ function PrizePaceChart({ prizes, records, event }: { prizes: Prize[]; records: 
         <polyline points={`38,140 390,${expectedY}`} className="pace-chart-target" />
         <polyline points={`38,140 390,${actualY}`} className="pace-chart-actual" />
         <circle cx="390" cy={actualY} r="5" className="pace-chart-dot" />
-        <text x="40" y="162">Start</text>
-        <text x="340" y="162">Now</text>
-        <text x="60" y={expectedY - 8}>Target {expected}</text>
-        <text x="300" y={actualY - 8}>Actual {actual}</text>
+        <text x="40" y="162">开始</text>
+        <text x="340" y="162">当前</text>
+        <text x="60" y={expectedY - 8}>目标 {expected}</text>
+        <text x="300" y={actualY - 8}>实际 {actual}</text>
       </svg>
     </div>
   );
@@ -281,9 +289,5 @@ function formatWindow(event: Event | undefined): string {
     return '-';
   }
 
-  return `${event.startAt ?? '?'} - ${event.endAt ?? '?'}`;
-}
-
-function formatDateTime(value: string): string {
-  return value.replace('T', ' ').slice(0, 19);
+  return `${formatAdminDateTime(event.startAt)} - ${formatAdminDateTime(event.endAt)}`;
 }

@@ -1,9 +1,17 @@
 import 'fake-indexeddb/auto';
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { commitPersistentDraw, seedEvent, seedPrizes } from '../../db/drawRepository';
+import * as drawRepository from '../../db/drawRepository';
+import {
+  clearActiveDrawSession,
+  commitPersistentDraw,
+  redeemDrawRecord,
+  seedEvent,
+  seedPrizes,
+  voidActiveDraw,
+} from '../../db/drawRepository';
 import { createSignalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import type { Event, Prize } from '../../domain/draw/types';
 import { DisplayPage } from './DisplayPage';
@@ -195,4 +203,113 @@ describe('DisplayPage draw integration', () => {
     expect(screen.getByText('一等奖')).toBeInTheDocument();
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   }, 15000);
+
+  it('returns to ATTRACT when staff clears the session in another window', async () => {
+    await seedEvent(db, event);
+    await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
+    await commitPersistentDraw(db, {
+      eventId: event.id,
+      random: () => 0,
+      createId: (prefix) => `${prefix}-sync`,
+    });
+
+    render(<DisplayPage db={db} />);
+    expect(await screen.findByText('一等奖')).toBeInTheDocument();
+
+    await act(async () => {
+      await clearActiveDrawSession(db, event.id);
+    });
+
+    expect(
+      await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i }, { timeout: 3000 }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the committed result visible when clearing the session fails', async () => {
+    await seedEvent(db, event);
+    await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
+    await commitPersistentDraw(db, {
+      eventId: event.id,
+      random: () => 0,
+      createId: (prefix) => `${prefix}-clear-failure`,
+    });
+
+    render(<DisplayPage db={db} />);
+    expect(await screen.findByText('一等奖')).toBeInTheDocument();
+
+    const pendingClear = createDeferred<void>();
+    vi.spyOn(drawRepository, 'clearActiveDrawSession').mockReturnValueOnce(pendingClear.promise);
+    fireEvent.click(screen.getByRole('button', { name: /下一位参与者/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /确认并返回/ }));
+      pendingClear.reject(new Error('simulated storage failure'));
+      await pendingClear.promise.catch(() => undefined);
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/结果尚未安全结束/);
+    expect(screen.getByText('一等奖')).toBeInTheDocument();
+    await expect(db.drawSessions.count()).resolves.toBe(1);
+  });
+
+  it('does not let the delayed reveal overwrite an early staff redemption', async () => {
+    await seedEvent(db, event);
+    await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
+    render(<DisplayPage db={db} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i }));
+    const record = await waitFor(async () => {
+      const value = await db.drawRecords.toCollection().first();
+      expect(value).toBeDefined();
+      return value!;
+    });
+
+    await act(async () => {
+      await redeemDrawRecord(db, record.id, () => '2026-07-06T01:02:00.000Z');
+    });
+
+    await waitFor(() => expect(screen.getByText('一等奖')).toBeInTheDocument(), { timeout: 8000 });
+    await expect(db.drawRecords.get(record.id)).resolves.toMatchObject({
+      status: 'REDEEMED',
+      redeemedAt: '2026-07-06T01:02:00.000Z',
+    });
+  }, 12000);
+
+  it('returns to ATTRACT when staff voids before the delayed reveal', async () => {
+    await seedEvent(db, event);
+    await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
+    render(<DisplayPage db={db} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i }));
+    const record = await waitFor(async () => {
+      const value = await db.drawRecords.toCollection().first();
+      expect(value).toBeDefined();
+      return value!;
+    });
+
+    await act(async () => {
+      await voidActiveDraw(db, {
+        eventId: event.id,
+        recordId: record.id,
+        reason: '动画中作废',
+      });
+    });
+
+    expect(
+      await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i }, { timeout: 8000 }),
+    ).toBeInTheDocument();
+    await expect(db.drawRecords.get(record.id)).resolves.toMatchObject({ status: 'VOIDED' });
+    expect(screen.queryByText('一等奖')).not.toBeInTheDocument();
+  }, 12000);
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
+}
