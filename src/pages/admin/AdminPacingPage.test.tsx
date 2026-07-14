@@ -102,7 +102,8 @@ describe('AdminPacingPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: '锁定 一等奖' }));
+    await user.click(await screen.findByRole('button', { name: '一等奖 配置奖项' }));
+    await user.click(screen.getByRole('switch', { name: '一等奖 锁定中奖概率' }));
     fireEvent.change(screen.getByLabelText('二等奖 中奖概率'), { target: { value: '10' } });
     await user.click(screen.getByRole('button', { name: '自动平衡到 100%' }));
     await user.click(screen.getByRole('button', { name: '确认应用' }));
@@ -134,9 +135,49 @@ describe('AdminPacingPage', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: '高级模式' }));
+    await user.selectOptions(screen.getByLabelText('一等奖 发放方式'), 'EVEN');
+    await user.click(screen.getByRole('button', { name: '一等奖 配置智能策略' }));
 
     expect(screen.getAllByText('高级算法参数').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/基础权重/).length).toBeGreaterThan(0);
+  });
+
+  it('shows only the selected smart strategy fields and keeps advanced controls hidden', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '智能模式' }));
+    expect(screen.queryByText('高级算法参数')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '一等奖 智能设置' })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('一等奖 发放方式'), 'EVEN');
+    expect(screen.queryByLabelText('一等奖 最小中奖间隔')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '一等奖 配置智能策略' }));
+    expect(screen.getByRole('region', { name: '一等奖 智能设置' })).toBeInTheDocument();
+    expect(screen.getByLabelText('一等奖 最小中奖间隔')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('一等奖 发放方式'), 'RANDOM');
+    expect(screen.queryByLabelText('一等奖 最小中奖间隔')).not.toBeInTheDocument();
+  });
+
+  it('keeps smart settings collapsed and expands only the selected prize', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '智能模式' }));
+    const firstPrizeButton = screen.getByRole('button', { name: '一等奖 配置智能策略' });
+    const secondPrizeButton = screen.getByRole('button', { name: '二等奖 配置智能策略' });
+
+    expect(firstPrizeButton).toHaveAttribute('aria-expanded', 'false');
+    await user.click(firstPrizeButton);
+    expect(screen.getByRole('region', { name: '一等奖 智能设置' })).toBeInTheDocument();
+    expect(firstPrizeButton).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(secondPrizeButton);
+    expect(screen.queryByRole('region', { name: '一等奖 智能设置' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '二等奖 智能设置' })).toBeInTheDocument();
+    expect(firstPrizeButton).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('warns when the page has unsaved changes', async () => {
@@ -148,6 +189,7 @@ describe('AdminPacingPage', () => {
   });
 
   it('does not claim absolute effective probability for smart pacing', async () => {
+    const user = userEvent.setup();
     await seedPrizes(db, [
       prize({
         id: 'prize-smart',
@@ -158,11 +200,13 @@ describe('AdminPacingPage', () => {
       }),
     ]);
     renderPage();
+    await user.click(await screen.findByRole('button', { name: '智能模式' }));
+    await user.click(screen.getByRole('button', { name: '智能一等奖 配置智能策略' }));
 
-    const row = await screen.findByRole('row', { name: /智能一等奖/ });
+    const panel = await screen.findByRole('region', { name: '智能一等奖 智能设置' });
 
-    expect(within(row).getByText(/当前相对倍率/)).toBeInTheDocument();
-    expect(within(row).queryByText(/当前有效概率/)).not.toBeInTheDocument();
+    expect(within(panel).getByText(/当前相对倍率/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/当前有效概率/)).not.toBeInTheDocument();
   });
 
   function renderPage() {

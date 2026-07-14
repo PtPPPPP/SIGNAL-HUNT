@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { EmptyState, StatusBadge } from '../../components/ui/AdminUI';
 import { getDashboardSummary, listDrawRecords, listPrizes, type DashboardSummary } from '../../db/adminRepository';
-import { getActiveEvent } from '../../db/drawRepository';
+import { getConfiguredActiveEvent } from '../../db/drawRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import { calculatePrizePacing } from '../../domain/draw/prizePacing';
 import type { DrawRecord, Event, Prize } from '../../domain/draw/types';
@@ -38,7 +38,7 @@ export function AdminDashboardPage({ db = signalHuntDatabase }: AdminDashboardPa
   useEffect(() => {
     let disposed = false;
 
-    void Promise.all([getDashboardSummary(db), getActiveEvent(db), listPrizes(db), listDrawRecords(db)])
+    void Promise.all([getDashboardSummary(db), getConfiguredActiveEvent(db), listPrizes(db), listDrawRecords(db)])
       .then(([nextSummary, event, nextPrizes, nextRecords]) => {
         if (disposed) {
           return;

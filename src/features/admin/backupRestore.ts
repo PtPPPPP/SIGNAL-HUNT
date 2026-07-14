@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { SignalHuntDatabase } from '../../db/database';
+import { normalizeEventTimestamps } from '../../domain/draw/eventParticipation';
 import { getEventValidationIssues } from '../../domain/draw/eventValidation';
 import { getPrizeValidationIssues } from '../../domain/draw/prizeValidation';
 
@@ -373,12 +374,19 @@ export function validateBackupManifest(
 export async function restoreBackup(db: SignalHuntDatabase, backup: BackupManifest): Promise<BackupValidationResult> {
   const initialValidation = validateBackupManifest(backup);
   if (!initialValidation.valid) throwValidation(initialValidation);
+  const normalizedBackup: BackupManifest = {
+    ...backup,
+    data: {
+      ...backup.data,
+      events: backup.data.events.map((event) => normalizeEventTimestamps(event)),
+    },
+  };
 
   return db.transaction('rw', db.events, db.prizes, db.drawSessions, db.drawRecords, async () => {
     const protectedEndedEventIds = new Set(
       (await db.events.where('status').equals('ENDED').toArray()).map((event) => event.id),
     );
-    const validation = validateBackupManifest(backup, { protectedEndedEventIds });
+    const validation = validateBackupManifest(normalizedBackup, { protectedEndedEventIds });
     if (!validation.valid) throwValidation(validation);
 
     await db.events.clear();
@@ -386,14 +394,14 @@ export async function restoreBackup(db: SignalHuntDatabase, backup: BackupManife
     await db.drawSessions.clear();
     await db.drawRecords.clear();
 
-    await db.events.bulkPut(backup.data.events);
-    await db.prizes.bulkPut(backup.data.prizes);
-    await db.drawSessions.bulkPut(backup.data.drawSessions);
-    await db.drawRecords.bulkPut(backup.data.drawRecords);
+    await db.events.bulkPut(normalizedBackup.data.events);
+    await db.prizes.bulkPut(normalizedBackup.data.prizes);
+    await db.drawSessions.bulkPut(normalizedBackup.data.drawSessions);
+    await db.drawRecords.bulkPut(normalizedBackup.data.drawRecords);
 
-    const restored = await readManifestInsideTransaction(db, backup);
+    const restored = await readManifestInsideTransaction(db, normalizedBackup);
     const restoredValidation = validateBackupManifest(restored, { protectedEndedEventIds });
-    if (!restoredValidation.valid || !sameManifestData(restored, backup)) {
+    if (!restoredValidation.valid || !sameManifestData(restored, normalizedBackup)) {
       throw new BackupValidationError(['恢复结果复核失败，数据库已自动回滚。'], restoredValidation);
     }
 

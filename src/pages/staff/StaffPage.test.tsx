@@ -206,15 +206,13 @@ describe('StaffPage', () => {
       .spyOn(drawRepository, 'clearActiveDrawSession')
       .mockReturnValueOnce(pendingEnd.promise);
 
-    const click = user.click(endButton);
-    await waitFor(() => expect(endSpy).toHaveBeenCalledTimes(1));
+    await user.click(endButton);
+    expect(endSpy).toHaveBeenCalledTimes(1);
     await act(async () => {
       pendingEnd.reject(new Error('simulated storage failure'));
       await pendingEnd.promise.catch(() => undefined);
       await Promise.resolve();
     });
-    await click;
-
     expect(await screen.findByText(/结束当前结果失败/)).toBeInTheDocument();
     expect(screen.getByText('一等奖')).toBeInTheDocument();
     await expect(db.drawSessions.count()).resolves.toBe(1);

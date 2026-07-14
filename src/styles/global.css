@@ -1076,6 +1076,13 @@ button {
   text-decoration: none;
 }
 
+.admin-button {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: keep-all;
+  writing-mode: horizontal-tb;
+}
+
 .admin-button--primary,
 .admin-button:not(.secondary):not(.danger):not(.admin-button--secondary):not(.admin-button--ghost):not(.admin-button--danger),
 .admin-link-button {

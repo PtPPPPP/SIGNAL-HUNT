@@ -1,4 +1,4 @@
-import { getActiveEvent, seedEvent, seedPrizes } from '../../db/drawRepository';
+import { getConfiguredActiveEvent, seedEvent, seedPrizes } from '../../db/drawRepository';
 import type { SignalHuntDatabase } from '../../db/database';
 import type { Event, Prize } from '../../domain/draw/types';
 
@@ -91,7 +91,7 @@ export async function ensureDemoSeed(db: SignalHuntDatabase): Promise<void> {
     return;
   }
 
-  const activeEvent = await getActiveEvent(db);
+  const activeEvent = await getConfiguredActiveEvent(db);
 
   if (activeEvent) {
     return;

@@ -56,7 +56,7 @@ describe('DisplayPage draw integration', () => {
 
     render(<DisplayPage db={db} />);
 
-    const touchTarget = await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i });
+    const touchTarget = await screen.findByRole('button', { name: /点亮好运/i });
 
     await act(async () => {
       fireEvent.click(touchTarget);
@@ -75,7 +75,7 @@ describe('DisplayPage draw integration', () => {
 
     render(<DisplayPage db={db} />);
 
-    const touchTarget = await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i });
+    const touchTarget = await screen.findByRole('button', { name: /点亮好运/i });
 
     await act(async () => {
       fireEvent.click(touchTarget);
@@ -103,8 +103,9 @@ describe('DisplayPage draw integration', () => {
 
     render(<DisplayPage db={db} />);
 
-    expect(await screen.findByRole('heading', { name: /信号已锁定/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /恭喜，幸运降临/i })).toBeInTheDocument();
     expect(screen.getByText('一等奖')).toBeInTheDocument();
+    expect(screen.getByText('请向现场工作人员领取你的奖品')).toBeInTheDocument();
     expect(await db.drawRecords.count()).toBe(1);
   });
 
@@ -114,7 +115,7 @@ describe('DisplayPage draw integration', () => {
 
     render(<DisplayPage db={db} />);
 
-    const touchTarget = await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i });
+    const touchTarget = await screen.findByRole('button', { name: /点亮好运/i });
 
     await act(async () => {
       fireEvent.click(touchTarget);
@@ -129,7 +130,7 @@ describe('DisplayPage draw integration', () => {
 
     render(<DisplayPage db={db} />);
 
-    const touchTarget = await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i });
+    const touchTarget = await screen.findByRole('button', { name: /点亮好运/i });
     await act(async () => {
       fireEvent.click(touchTarget);
     });
@@ -152,7 +153,7 @@ describe('DisplayPage draw integration', () => {
 
     render(<DisplayPage db={db} />);
 
-    const touchTarget = await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i });
+    const touchTarget = await screen.findByRole('button', { name: /点亮好运/i });
     await act(async () => {
       fireEvent.click(touchTarget);
     });
@@ -171,7 +172,7 @@ describe('DisplayPage draw integration', () => {
     });
 
     await waitFor(
-      () => expect(screen.getByRole('button', { name: /触碰屏幕 · 开始捕获/ })).toBeInTheDocument(),
+      () => expect(screen.getByRole('button', { name: /点亮好运/ })).toBeInTheDocument(),
       { timeout: 3000 },
     );
   }, 15000);
@@ -182,7 +183,7 @@ describe('DisplayPage draw integration', () => {
 
     render(<DisplayPage db={db} />);
 
-    const touchTarget = await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i });
+    const touchTarget = await screen.findByRole('button', { name: /点亮好运/i });
     await act(async () => {
       fireEvent.click(touchTarget);
     });
@@ -221,7 +222,7 @@ describe('DisplayPage draw integration', () => {
     });
 
     expect(
-      await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i }, { timeout: 3000 }),
+      await screen.findByRole('button', { name: /点亮好运/i }, { timeout: 3000 }),
     ).toBeInTheDocument();
   });
 
@@ -257,7 +258,7 @@ describe('DisplayPage draw integration', () => {
     await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
     render(<DisplayPage db={db} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /点亮好运/i }));
     const record = await waitFor(async () => {
       const value = await db.drawRecords.toCollection().first();
       expect(value).toBeDefined();
@@ -280,7 +281,7 @@ describe('DisplayPage draw integration', () => {
     await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
     render(<DisplayPage db={db} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /点亮好运/i }));
     const record = await waitFor(async () => {
       const value = await db.drawRecords.toCollection().first();
       expect(value).toBeDefined();
@@ -296,7 +297,7 @@ describe('DisplayPage draw integration', () => {
     });
 
     expect(
-      await screen.findByRole('button', { name: /触碰屏幕 · 开始捕获/i }, { timeout: 8000 }),
+      await screen.findByRole('button', { name: /点亮好运/i }, { timeout: 8000 }),
     ).toBeInTheDocument();
     await expect(db.drawRecords.get(record.id)).resolves.toMatchObject({ status: 'VOIDED' });
     expect(screen.queryByText('一等奖')).not.toBeInTheDocument();

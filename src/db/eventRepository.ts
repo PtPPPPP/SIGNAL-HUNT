@@ -1,4 +1,5 @@
 import type { Event, EventStatus } from '../domain/draw/types';
+import { toUtcIsoTimestamp } from '../domain/draw/eventParticipation';
 import type { SignalHuntDatabase } from './database';
 
 export type EventRepositoryErrorCode =
@@ -46,12 +47,6 @@ function createId(): string {
   }
 
   return `event-${crypto.randomUUID()}`;
-}
-
-function normalizeTimestamp(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-
-  return trimmed ? trimmed : undefined;
 }
 
 export async function listEvents(db: SignalHuntDatabase): Promise<Event[]> {
@@ -108,8 +103,8 @@ export async function createEvent(db: SignalHuntDatabase, input: CreateEventInpu
       code,
       status,
       createdAt: now(),
-      startAt: normalizeTimestamp(input.startAt),
-      endAt: normalizeTimestamp(input.endAt),
+      startAt: toUtcIsoTimestamp(input.startAt),
+      endAt: toUtcIsoTimestamp(input.endAt),
     };
 
     await db.events.put(event);

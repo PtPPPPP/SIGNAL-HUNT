@@ -13,12 +13,15 @@ import { gsap } from 'gsap';
 import {
   clearActiveDrawSession,
   commitPersistentDraw,
-  getActiveEvent,
   markDrawRevealed,
-  recoverCommittedDraw,
 } from '../../db/drawRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
-import { getLatestEventByStatus } from '../../db/eventRepository';
+import {
+  EventParticipationError,
+  getEventParticipationDecision,
+  type EventParticipationDecision,
+  type EventParticipationErrorCode,
+} from '../../domain/draw/eventParticipation';
 import { ensureDemoSeed } from '../../features/display/displayBootstrap';
 import { logStructured, type LogEntryType } from '../../features/diagnostics/errorLog';
 import {
@@ -37,17 +40,18 @@ import type { DrawRecord, DrawSession, Event } from '../../domain/draw/types';
 
 type DisplayPageProps = {
   db?: SignalHuntDatabase;
+  now?: () => number;
 };
 
 type DisplayDatabaseSnapshot = {
-  activeEvent?: Event;
+  configuredEvent?: Event;
   eventCount: number;
-  pausedEvent?: Event;
+  participation?: EventParticipationDecision;
   record?: DrawRecord;
   session?: DrawSession;
 };
 
-type BlockedMessage = { title: string; subtitle: string } | null;
+type BlockedMessage = { title: string; subtitle: string; detail?: string; startsAt?: string } | null;
 
 type DisplaySnapshotHandlers = {
   currentState: DisplayState;
@@ -57,6 +61,7 @@ type DisplaySnapshotHandlers = {
   scheduleReset: (delayMs: number) => void;
   setBlockedMessage: Dispatch<SetStateAction<BlockedMessage>>;
   setDisplayState: Dispatch<SetStateAction<DisplayState>>;
+  setEventBoundaryAt: Dispatch<SetStateAction<string | undefined>>;
   setRevealedPrizeName: Dispatch<SetStateAction<string | undefined>>;
   setResultActionError: Dispatch<SetStateAction<string | undefined>>;
 };
@@ -66,12 +71,14 @@ type DisplaySnapshotHandlers = {
 const CONFIRM_BEFORE_RESET_RESULT = true;
 const RESETTING_HOLD_MS = 700;
 
-export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
+export function DisplayPage({ db = signalHuntDatabase, now = systemNow }: DisplayPageProps) {
   const [displayState, setDisplayState] = useState<DisplayState>(createInitialDisplayState);
   const [revealedPrizeName, setRevealedPrizeName] = useState<string | undefined>(undefined);
   const [confirmExit, setConfirmExit] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState<BlockedMessage>(null);
   const [databaseReady, setDatabaseReady] = useState(false);
+  const [eventBoundaryAt, setEventBoundaryAt] = useState<string | undefined>(undefined);
+  const [clockNowMs, setClockNowMs] = useState(() => now());
   const [resultActionError, setResultActionError] = useState<string | undefined>(undefined);
   const [syncError, setSyncError] = useState(false);
   const [syncRetryNonce, setSyncRetryNonce] = useState(0);
@@ -92,6 +99,9 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
   const interactionLocked = isInteractionLocked(displayState);
   const isResult = displayState.status === 'RESULT' && Boolean(revealedPrizeName);
   const needsStaff = displayState.status === 'ERROR' || displayState.status === 'PAUSED';
+  const countdown = blockedMessage?.startsAt
+    ? formatCountdown(Date.parse(blockedMessage.startsAt) - clockNowMs)
+    : undefined;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -172,7 +182,10 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
       setDisplayState((current) => applyEvent(current, { type: 'COMMIT_STARTED' }));
 
       try {
-        const result = await commitPersistentDraw(db, { eventId });
+        const result = await commitPersistentDraw(db, {
+          eventId,
+          now: () => new Date(now()).toISOString(),
+        });
 
         if (!mountedRef.current) {
           return;
@@ -189,10 +202,16 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
 
         const message = toErrorMessage(error);
         log('DATABASE_ERROR', { stage: 'commit', message });
+        if (error instanceof EventParticipationError) {
+          eventIdRef.current = undefined;
+          commitInFlightRef.current = false;
+          setBlockedMessage(toParticipationBlockedMessage(error.code, error.event));
+          setSyncRetryNonce((current) => current + 1);
+        }
         setDisplayState((current) => applyEvent(current, { type: 'COMMIT_FAILED', message }));
       }
     },
-    [db, schedulePostCommitTimeline],
+    [db, now, schedulePostCommitTimeline],
   );
 
   const handleTouchStart = useCallback(() => {
@@ -269,66 +288,32 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
     setConfirmExit(false);
   }, []);
 
-  // Boot: ensure a drawable event exists, then recover any committed-but-unrevealed draw.
-  // 恢复的结果同样永久停留，不再自动复位。
+  // Boot and live updates share the same snapshot reconciliation. This prevents
+  // initial load, cross-window changes, and time-boundary refreshes from drifting.
   useEffect(() => {
     let disposed = false;
 
     void (async () => {
       try {
         await ensureDemoSeed(db);
-        const event = await getActiveEvent(db);
+        const snapshot = await readDisplayDatabaseSnapshot(db, eventIdRef.current, now());
 
         if (disposed) {
           return;
         }
 
-        if (!event) {
-          eventIdRef.current = undefined;
-
-          // No ACTIVE event. In dev ensureDemoSeed already handled the empty case;
-          // in production an empty/ended/paused DB is a real operating condition we
-          // must surface instead of papering over with fake prizes.
-          const paused = await getLatestEventByStatus(db, 'PAUSED');
-
-          if (paused) {
-            setBlockedMessage(null);
-            setDisplayState((current) =>
-              current.status === 'PAUSED' ? current : applyEvent(current, { type: 'PAUSE' }),
-            );
-            setDatabaseReady(true);
-            return;
-          }
-
-          const eventCount = await db.events.count();
-          setBlockedMessage(
-            eventCount > 0
-              ? { title: '活动已结束', subtitle: 'EVENT ENDED' }
-              : { title: '尚未配置活动', subtitle: 'NO EVENT CONFIGURED' },
-          );
-          setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
-          setDatabaseReady(true);
-          requestInitialAdmin(eventCount, initialAdminRequestedRef);
-          return;
-        }
-
-        setBlockedMessage(null);
-        eventIdRef.current = event.id;
-
-        const recovered = await recoverCommittedDraw(db, event.id);
-
-        if (disposed) {
-          return;
-        }
-
-        if (recovered) {
-          setRevealedPrizeName(recovered.record.prizeNameSnapshot);
-          log('DRAW_RECOVERED', { recordId: recovered.record.id });
-          setDisplayState((current) => applyEvent(current, { type: 'BOOT_RECOVERED' }));
-          // 不再 scheduleReset：恢复的结果停留到工作人员手动结束。
-        } else {
-          setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
-        }
+        reconcileDisplaySnapshot(snapshot, {
+          currentState: stateRef.current,
+          eventIdRef,
+          initialAdminRequestedRef,
+          resetInFlightRef,
+          scheduleReset,
+          setBlockedMessage,
+          setDisplayState,
+          setEventBoundaryAt,
+          setRevealedPrizeName,
+          setResultActionError,
+        });
         setDatabaseReady(true);
       } catch (error) {
         const message = toErrorMessage(error);
@@ -350,7 +335,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       clearScheduledTimeline(timeoutIdsRef.current);
     };
-  }, [db]);
+  }, [db, now, scheduleReset]);
 
   // Dexie liveQuery propagates IndexedDB mutations across same-origin Electron
   // windows through BroadcastChannel. The display therefore reacts immediately
@@ -358,7 +343,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
   useEffect(() => {
     if (!databaseReady) return;
 
-    const subscription = liveQuery(() => readDisplayDatabaseSnapshot(db, eventIdRef.current)).subscribe({
+    const subscription = liveQuery(() => readDisplayDatabaseSnapshot(db, eventIdRef.current, now())).subscribe({
       next: (snapshot) => {
         if (!mountedRef.current || commitInFlightRef.current) return;
         if (syncErrorRef.current) {
@@ -373,6 +358,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
           scheduleReset,
           setBlockedMessage,
           setDisplayState,
+          setEventBoundaryAt,
           setRevealedPrizeName,
           setResultActionError,
         });
@@ -392,7 +378,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
     });
 
     return () => subscription.unsubscribe();
-  }, [databaseReady, db, scheduleReset, syncRetryNonce]);
+  }, [databaseReady, db, now, scheduleReset, syncRetryNonce]);
 
   useEffect(() => {
     if (!databaseReady) return;
@@ -401,6 +387,28 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
       setSyncRetryNonce((current) => current + 1);
     });
   }, [databaseReady]);
+
+  useEffect(() => {
+    if (!eventBoundaryAt) return;
+
+    const boundaryMs = Date.parse(eventBoundaryAt);
+    if (Number.isNaN(boundaryMs)) return;
+
+    const timeoutId = window.setTimeout(
+      () => setSyncRetryNonce((current) => current + 1),
+      Math.max(0, boundaryMs - now()) + 1,
+    );
+
+    return () => window.clearTimeout(timeoutId);
+  }, [eventBoundaryAt, now]);
+
+  useEffect(() => {
+    if (!blockedMessage?.startsAt) return;
+
+    setClockNowMs(now());
+    const intervalId = window.setInterval(() => setClockNowMs(now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [blockedMessage?.startsAt, now]);
 
   // Panel intro animation on status change (skipped under reduced-motion).
   useEffect(() => {
@@ -437,7 +445,9 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
         <section className="display-panel" ref={panelRef}>
           <p className="display-eyebrow">{blockedMessage.subtitle}</p>
           <h1 id="display-title">{blockedMessage.title}</h1>
-          <p className="display-copy">请联系现场工作人员处理</p>
+          {blockedMessage.detail ? <p className="display-copy">{blockedMessage.detail}</p> : null}
+          {countdown ? <p className="display-copy" aria-live="polite">距离开始还有 {countdown}</p> : null}
+          {!blockedMessage.detail && !countdown ? <p className="display-copy">请联系现场工作人员处理</p> : null}
           {syncError ? (
             <button className="primary-touch-target" type="button" onClick={() => setSyncRetryNonce((current) => current + 1)}>
               重试同步
@@ -452,9 +462,7 @@ export function DisplayPage({ db = signalHuntDatabase }: DisplayPageProps) {
           </h1>
           <p className="display-result-prize">{revealedPrizeName}</p>
           <p className="display-result-meta">
-            恭喜捕获幸运信号
-            <br />
-            请向现场工作人员领取对应奖品
+            请向现场工作人员领取你的奖品
           </p>
           <div className="display-result-actions">
             <button className="next-participant-button" type="button" onClick={handleRequestExit}>
@@ -524,18 +532,20 @@ function log(type: LogEntryType, details: Record<string, unknown>): void {
 async function readDisplayDatabaseSnapshot(
   db: SignalHuntDatabase,
   currentEventId?: string,
+  now: number = Date.now(),
 ): Promise<DisplayDatabaseSnapshot> {
   const [events, sessions] = await Promise.all([
     db.events.toArray(),
     db.drawSessions.where('status').equals('COMMITTED').toArray(),
-    db.prizes.toArray(),
   ]);
-  const activeEvent = latestEvent(events.filter((event) => event.status === 'ACTIVE'));
-  const pausedEvent = latestEvent(events.filter((event) => event.status === 'PAUSED'));
+  const configuredEvent =
+    latestEvent(events.filter((event) => event.status === 'ACTIVE')) ??
+    latestEvent(events.filter((event) => event.status === 'PAUSED')) ??
+    latestEvent(events);
   // Persisted configuration is authoritative. A backup restore can replace the
-  // active event id while this window is open, so do not keep watching a stale
-  // in-memory id ahead of the newly active/paused event.
-  const watchedEventId = activeEvent?.id ?? pausedEvent?.id ?? currentEventId;
+  // current event id while this window is open, so do not keep watching a stale
+  // in-memory id ahead of the newly configured event.
+  const watchedEventId = configuredEvent?.id ?? currentEventId;
   const session = watchedEventId
     ? sessions.find((candidate) => candidate.eventId === watchedEventId)
     : undefined;
@@ -546,9 +556,9 @@ async function readDisplayDatabaseSnapshot(
   }
 
   return {
-    activeEvent,
+    configuredEvent,
     eventCount: events.length,
-    pausedEvent,
+    participation: configuredEvent ? getEventParticipationDecision(configuredEvent, now) : undefined,
     record,
     session,
   };
@@ -563,12 +573,23 @@ function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: D
     scheduleReset,
     setBlockedMessage,
     setDisplayState,
+    setEventBoundaryAt,
     setRevealedPrizeName,
     setResultActionError,
   } = handlers;
 
   if (currentState.status === 'RESULT') {
     if (snapshot.session || resetInFlightRef.current) return;
+
+    if (snapshot.configuredEvent && snapshot.participation && snapshot.participation.code !== 'ALLOWED') {
+      eventIdRef.current = undefined;
+      setBlockedMessage(toParticipationBlockedMessage(snapshot.participation.code, snapshot.configuredEvent));
+      setEventBoundaryAt(snapshot.participation.nextBoundaryAt);
+    } else if (snapshot.configuredEvent && snapshot.participation?.code === 'ALLOWED') {
+      eventIdRef.current = snapshot.configuredEvent.id;
+      setBlockedMessage(null);
+      setEventBoundaryAt(snapshot.participation.nextBoundaryAt);
+    }
 
     resetInFlightRef.current = true;
     setDisplayState((current) =>
@@ -590,6 +611,7 @@ function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: D
   if (snapshot.session && snapshot.record) {
     eventIdRef.current = snapshot.session.eventId;
     setBlockedMessage(null);
+    setEventBoundaryAt(undefined);
     setResultActionError(undefined);
     setRevealedPrizeName(snapshot.record.prizeNameSnapshot);
     log('DRAW_RECOVERED', { recordId: snapshot.record.id, source: 'liveQuery' });
@@ -597,9 +619,10 @@ function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: D
     return;
   }
 
-  if (snapshot.activeEvent) {
-    eventIdRef.current = snapshot.activeEvent.id;
+  if (snapshot.configuredEvent && snapshot.participation?.code === 'ALLOWED') {
+    eventIdRef.current = snapshot.configuredEvent.id;
     setBlockedMessage(null);
+    setEventBoundaryAt(snapshot.participation.nextBoundaryAt);
     setRevealedPrizeName(undefined);
 
     if (currentState.status === 'BOOT') {
@@ -613,18 +636,19 @@ function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: D
   }
 
   eventIdRef.current = undefined;
-  if (snapshot.pausedEvent) {
-    setBlockedMessage(null);
+  setRevealedPrizeName(undefined);
+  if (snapshot.configuredEvent && snapshot.participation && snapshot.participation.code !== 'ALLOWED') {
+    setBlockedMessage(toParticipationBlockedMessage(snapshot.participation.code, snapshot.configuredEvent));
+    setEventBoundaryAt(snapshot.participation.nextBoundaryAt);
     if (currentState.status === 'BOOT' || currentState.status === 'ATTRACT') {
       setDisplayState((current) => applyEvent(current, { type: 'PAUSE' }));
     }
     return;
   }
 
+  setEventBoundaryAt(undefined);
   setBlockedMessage(
-    snapshot.eventCount > 0
-      ? { title: '活动已结束', subtitle: 'EVENT ENDED' }
-      : { title: '尚未配置活动', subtitle: 'NO EVENT CONFIGURED' },
+    { title: '尚未配置活动', subtitle: 'NO EVENT CONFIGURED' },
   );
   if (currentState.status === 'BOOT') {
     setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
@@ -634,6 +658,57 @@ function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: D
 
 function latestEvent(events: Event[]): Event | undefined {
   return [...events].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+}
+
+function toParticipationBlockedMessage(code: EventParticipationErrorCode, event: Event): NonNullable<BlockedMessage> {
+  if (code === 'EVENT_NOT_STARTED') {
+    return {
+      title: '活动尚未开始',
+      subtitle: 'EVENT NOT STARTED',
+      detail: event.startAt ? `开始时间：${formatDisplayDateTime(event.startAt)}` : undefined,
+      startsAt: event.startAt,
+    };
+  }
+
+  if (code === 'EVENT_ENDED') {
+    return {
+      title: '活动已结束',
+      subtitle: 'EVENT ENDED',
+      detail: '本场活动已结束，感谢参与。',
+    };
+  }
+
+  return {
+    title: '活动暂不可参与',
+    subtitle: code === 'EVENT_PAUSED' ? 'EVENT PAUSED' : 'EVENT INACTIVE',
+    detail: code === 'EVENT_PAUSED' ? '活动已暂停，请等待工作人员恢复。' : '活动当前未启用。',
+  };
+}
+
+function formatDisplayDateTime(value: string): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function formatCountdown(remainingMs: number): string | undefined {
+  if (remainingMs <= 0) return undefined;
+
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
+}
+
+function systemNow(): number {
+  return Date.now();
 }
 
 function requestInitialAdmin(eventCount: number, requestedRef: MutableRefObject<boolean>): void {

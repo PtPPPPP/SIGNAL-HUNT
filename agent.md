@@ -784,23 +784,23 @@ Public copy should be concise.
 Preferred:
 
 ```text
-发现你的幸运信号
+下一份惊喜，会是你的吗？
 ```
 
 ```text
-触碰屏幕 · 开始捕获
+点亮好运
 ```
 
 ```text
-正在扫描信号
+惊喜正在路上
 ```
 
 ```text
-检测到峰值
+答案马上出现
 ```
 
 ```text
-幸运信号已锁定
+恭喜，幸运降临
 ```
 
 Avoid long scientific explanations on the main screen.

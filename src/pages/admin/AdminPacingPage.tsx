@@ -46,7 +46,9 @@ export function AdminPacingPage({ db = signalHuntDatabase }: AdminPacingPageProp
 
       <PacingModeTabs mode={pacing.mode} onChange={pacing.setMode} />
 
-      <StrategyPresetPanel onBalancedRelease={pacing.prepareAutoBalance} />
+      {pacing.mode !== 'simple' ? (
+        <StrategyPresetPanel onBalancedRelease={pacing.prepareAutoBalance} />
+      ) : null}
 
       <ProbabilityTable
         activeEvent={pacing.activeEvent}

@@ -50,7 +50,7 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
     render(<DisplayPage db={db} />);
 
     expect(await screen.findByRole('heading', { name: /尚未配置活动/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /触碰屏幕/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /点亮好运/ })).not.toBeInTheDocument();
   });
 
   it('enters PAUSED when the only event is paused, and never offers a draw', async () => {
@@ -59,8 +59,8 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
 
     render(<DisplayPage db={db} />);
 
-    expect(await screen.findByRole('heading', { name: /系统已暂停/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /触碰屏幕/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /活动暂不可参与/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /点亮好运/ })).not.toBeInTheDocument();
   });
 
   it('preserves a committed draw session while its event is paused (still recoverable)', async () => {
@@ -80,7 +80,7 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
     render(<DisplayPage db={db} />);
 
     // A committed result has priority over the paused event state and is restored.
-    expect(await screen.findByRole('heading', { name: /信号已锁定/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /恭喜，幸运降临/i })).toBeInTheDocument();
     expect(screen.getByText('一等奖')).toBeInTheDocument();
 
     await expect(recoverCommittedDraw(db, event.id)).resolves.toMatchObject({
@@ -104,16 +104,18 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
       await seedEvent(db, event);
       await seedPrizes(db, [prize()]);
     });
-    expect(await screen.findByRole('button', { name: /触碰屏幕/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /点亮好运/ })).toBeInTheDocument();
 
     await act(async () => {
       await pauseEvent(db, event.id);
     });
-    expect(await screen.findByRole('heading', { name: /系统已暂停/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /活动暂不可参与/ })).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveAttribute('data-state', 'PAUSED');
 
     await act(async () => {
       await activateEvent(db, event.id);
     });
-    expect(await screen.findByRole('button', { name: /触碰屏幕/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /点亮好运/ })).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveAttribute('data-state', 'ATTRACT');
   });
 });

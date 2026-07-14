@@ -25,7 +25,7 @@ describe('event repository lifecycle', () => {
     await db.delete();
   });
 
-  it('creates an event in DRAFT with a generated id and preserves timestamps', async () => {
+  it('creates an event in DRAFT and stores its local form times as UTC ISO', async () => {
     const event = await createEvent(db, {
       name: '量子展',
       code: 'Q-2026',
@@ -41,8 +41,8 @@ describe('event repository lifecycle', () => {
       code: 'Q-2026',
       status: 'DRAFT',
       createdAt: '2026-07-06T00:00:00.000Z',
-      startAt: '2026-07-06T10:00',
-      endAt: '2026-07-06T18:00',
+      startAt: new Date('2026-07-06T10:00').toISOString(),
+      endAt: new Date('2026-07-06T18:00').toISOString(),
     });
     await expect(db.events.get('event-fixed')).resolves.toEqual(event);
   });

@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 
 import { AdminButton } from '../../components/ui/AdminUI';
 import { signalHuntDatabase, type SignalHuntDatabase, DATABASE_NAME, DATABASE_VERSION } from '../../db/database';
-import { getActiveEvent, recoverCommittedDraw } from '../../db/drawRepository';
+import { getConfiguredActiveEvent, recoverCommittedDraw } from '../../db/drawRepository';
 import { clearStructuredLog } from '../../features/diagnostics/errorLog';
 import {
   buildDiagnosticExport,
@@ -190,7 +190,7 @@ async function gatherDatabase(db: SignalHuntDatabase): Promise<DatabaseSnapshot>
 }
 
 async function gatherDraw(db: SignalHuntDatabase): Promise<DrawSnapshot> {
-  const activeEvent = await getActiveEvent(db);
+  const activeEvent = await getConfiguredActiveEvent(db);
 
   if (!activeEvent) {
     const latest = await db.drawRecords.orderBy('committedAt').reverse().first();

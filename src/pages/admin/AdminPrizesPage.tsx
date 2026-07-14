@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 
 import { AdminButton, EmptyState, StatusBadge } from '../../components/ui/AdminUI';
 import { listDrawRecords, listPrizes, replacePrizes, savePrize } from '../../db/adminRepository';
-import { getActiveEvent } from '../../db/drawRepository';
+import { getConfiguredActiveEvent } from '../../db/drawRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import { calculatePrizePacing } from '../../domain/draw/prizePacing';
 import type { DrawRecord, Event, Prize, PrizeProbabilityMode, PrizeReleasePoint } from '../../domain/draw/types';
@@ -95,7 +95,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
     const [nextPrizes, nextRecords, event] = await Promise.all([
       listPrizes(db),
       listDrawRecords(db),
-      getActiveEvent(db),
+      getConfiguredActiveEvent(db),
     ]);
     setPrizes(nextPrizes);
     setRecords(nextRecords);

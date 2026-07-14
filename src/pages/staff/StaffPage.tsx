@@ -6,7 +6,7 @@ import { BrandMark } from '../../features/brand/BrandMark';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import {
   clearActiveDrawSession,
-  getActiveEvent,
+  getConfiguredActiveEvent,
   recoverCommittedDraw,
   redeemDrawRecord,
   voidActiveDraw,
@@ -33,7 +33,7 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
   const hasActiveResult = Boolean(activeDraw);
 
   const refresh = useCallback(async () => {
-    const event = await getActiveEvent(db);
+    const event = await getConfiguredActiveEvent(db);
 
     if (!event) {
       setActiveDraw(undefined);
@@ -46,7 +46,7 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
 
   const endCurrentResult = useCallback(async () => {
     try {
-      const event = await getActiveEvent(db);
+      const event = await getConfiguredActiveEvent(db);
 
       if (!event) {
         setMessage('当前没有进行中的活动。');
@@ -133,7 +133,7 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
 
   const confirmVoidRecord = useCallback(async () => {
     try {
-      const event = await getActiveEvent(db);
+      const event = await getConfiguredActiveEvent(db);
 
       if (!event) {
         setMessage('当前没有进行中的活动。');

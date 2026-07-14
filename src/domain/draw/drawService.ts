@@ -1,5 +1,6 @@
 import type { CommitDrawInput, CommitDrawResult, Prize } from './types';
 import { getEffectivePrizeWeight, type PrizePacingInput } from './prizePacing';
+import { assertEventParticipationAllowed } from './eventParticipation';
 
 const UINT32_RANGE = 0x100000000;
 
@@ -69,13 +70,10 @@ export function selectWeightedPrize(
 }
 
 export function commitDraw(input: CommitDrawInput): CommitDrawResult {
-  if (input.event.status !== 'ACTIVE') {
-    throw new Error('Event is not active.');
-  }
-
   const now = input.now ?? (() => new Date().toISOString());
   const createId = input.createId ?? createBrowserId;
   const committedAt = now();
+  assertEventParticipationAllowed(input.event, committedAt);
   const prize = selectWeightedPrize(input.prizes, input.random, {
     event: input.event,
     records: input.records,

@@ -121,15 +121,18 @@ describe('draw domain service', () => {
     ).toThrow('No active prize is available.');
   });
 
-  it('rejects draw commits when the event is not active', () => {
-    expect(() =>
+  it('rejects draw commits with the stable paused-event code', () => {
+    expect.assertions(1);
+    try {
       commitDraw({
         event: { ...activeEvent, status: 'PAUSED' },
         prizes: [createPrize()],
         now: () => '2026-07-06T01:00:00.000Z',
         random: () => 0,
         createId: (prefix) => `${prefix}-fixed`,
-      }),
-    ).toThrow('Event is not active.');
+      });
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'EVENT_PAUSED' });
+    }
   });
 });

@@ -74,7 +74,7 @@ describe('database migrations', () => {
     db = createSignalHuntDatabase(databaseName);
     await db.open();
 
-    expect(DATABASE_VERSION).toBe(3);
+    expect(DATABASE_VERSION).toBe(4);
     await expect(db.drawRecords.get('record-v1')).resolves.toMatchObject({
       id: 'record-v1',
       status: 'COMMITTED',
@@ -82,7 +82,7 @@ describe('database migrations', () => {
     });
   });
 
-  it('migrates v2 -> v3 by adding compound indexes and the diagnosticLogs table without losing data', async () => {
+  it('migrates v2 to the current schema without losing data and normalizes event times', async () => {
     const databaseName = `signal-hunt-v2-to-v3-${crypto.randomUUID()}`;
     const v2 = new V2SignalHuntDatabase(databaseName);
     await v2.open();
@@ -111,6 +111,15 @@ describe('database migrations', () => {
         status: 'COMMITTED',
       },
     ]);
+    await v2.events.put({
+      id: 'event-1',
+      name: '旧活动',
+      code: 'LEGACY',
+      status: 'ACTIVE',
+      createdAt: '2026-07-06T00:00:00.000Z',
+      startAt: '2026-07-06T10:00',
+      endAt: '2026-07-06T18:00',
+    });
     v2.close();
 
     db = createSignalHuntDatabase(databaseName);
@@ -119,6 +128,10 @@ describe('database migrations', () => {
     // Existing rows are preserved verbatim.
     await expect(db.drawRecords.count()).resolves.toBe(2);
     await expect(db.drawRecords.get('record-a')).resolves.toMatchObject({ status: 'REDEEMED' });
+    await expect(db.events.get('event-1')).resolves.toMatchObject({
+      startAt: new Date('2026-07-06T10:00').toISOString(),
+      endAt: new Date('2026-07-06T18:00').toISOString(),
+    });
 
     // The new [eventId+prizeId] compound index is usable.
     await expect(

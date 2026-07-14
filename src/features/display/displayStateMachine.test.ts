@@ -93,8 +93,9 @@ describe('display state machine', () => {
   });
 
   it('exposes concise copy for display states', () => {
-    expect(getDisplayCopy('ATTRACT').title).toBe('发现你的幸运信号');
-    expect(getDisplayCopy('SCANNING').title).toBe('扫描信号中');
-    expect(getDisplayCopy('RESULT').title).toBe('幸运信号已锁定');
+    expect(getDisplayCopy('ATTRACT').title).toBe('下一份惊喜，会是你的吗？');
+    expect(getDisplayCopy('SCANNING').title).toBe('惊喜正在路上');
+    expect(getDisplayCopy('REVEALING').title).toBe('答案马上出现');
+    expect(getDisplayCopy('RESULT').title).toBe('恭喜，幸运降临');
   });
 });

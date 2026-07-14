@@ -11,6 +11,9 @@ type AdminButtonProps = {
   children: ReactNode;
   type?: 'button' | 'submit';
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  ariaControls?: string;
+  ariaExpanded?: boolean;
+  ariaLabel?: string;
   disabled?: boolean;
   onClick?: () => void;
 };
@@ -23,11 +26,22 @@ export function AdminButton({
   children,
   type = 'button',
   variant = 'primary',
+  ariaControls,
+  ariaExpanded,
+  ariaLabel,
   disabled,
   onClick,
 }: AdminButtonProps) {
   return (
-    <button className={`admin-button admin-button--${variant}`} type={type} disabled={disabled} onClick={onClick}>
+    <button
+      className={`admin-button admin-button--${variant}`}
+      type={type}
+      aria-controls={ariaControls}
+      aria-expanded={ariaExpanded}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={onClick}
+    >
       {children}
     </button>
   );

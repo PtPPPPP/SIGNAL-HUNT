@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { listDrawRecords, listPrizes, replacePrizes } from '../../../db/adminRepository';
-import { getActiveEvent } from '../../../db/drawRepository';
+import { getConfiguredActiveEvent } from '../../../db/drawRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../../db/database';
 import {
   generateInventoryProbabilitySuggestion,
@@ -38,7 +38,7 @@ export function usePacingConfig(db: SignalHuntDatabase = signalHuntDatabase) {
     const [nextPrizes, nextRecords, event] = await Promise.all([
       listPrizes(db),
       listDrawRecords(db),
-      getActiveEvent(db),
+      getConfiguredActiveEvent(db),
     ]);
 
     setPrizes(nextPrizes);

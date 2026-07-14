@@ -1,4 +1,9 @@
 import { commitDraw } from '../domain/draw/drawService';
+import {
+  assertEventParticipationAllowed,
+  getEventParticipationDecision,
+  normalizeEventTimestamps,
+} from '../domain/draw/eventParticipation';
 import type { CommitDrawResult, Event, Prize } from '../domain/draw/types';
 import type { DrawRecord, DrawSession } from '../domain/draw/types';
 import type { SignalHuntDatabase } from './database';
@@ -51,7 +56,7 @@ export type VoidActiveDrawInput = {
 };
 
 export async function seedEvent(db: SignalHuntDatabase, event: Event): Promise<void> {
-  await db.events.put(event);
+  await db.events.put(normalizeEventTimestamps(event));
 }
 
 export async function seedPrizes(db: SignalHuntDatabase, prizes: readonly Prize[]): Promise<void> {
@@ -68,6 +73,11 @@ export async function commitPersistentDraw(
     if (!event) {
       throw new Error('Event was not found.');
     }
+
+    // Resolve one timestamp at the transaction boundary. commitDraw reuses the
+    // exact same instant, so validation and persisted timestamps cannot disagree.
+    const committedAt = input.now?.() ?? new Date().toISOString();
+    assertEventParticipationAllowed(event, committedAt);
 
     const activeSession = await db.drawSessions
       .where('[eventId+status]')
@@ -89,7 +99,7 @@ export async function commitPersistentDraw(
       prizes,
       records,
       participantId: input.participantId,
-      now: input.now,
+      now: () => committedAt,
       random: input.random,
       createId: input.createId,
     });
@@ -171,13 +181,23 @@ export async function getLatestRecord(db: SignalHuntDatabase, eventId: string): 
   return records.at(-1);
 }
 
-export async function getActiveEvent(db: SignalHuntDatabase): Promise<Event | undefined> {  const activeEvents = await db.events.where('status').equals('ACTIVE').toArray();
+export async function getConfiguredActiveEvent(db: SignalHuntDatabase): Promise<Event | undefined> {
+  const activeEvents = await db.events.where('status').equals('ACTIVE').toArray();
 
   if (activeEvents.length === 0) {
     return undefined;
   }
 
   return [...activeEvents].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+}
+
+/** Returns an event only while real participation is allowed at the supplied time. */
+export async function getActiveEvent(
+  db: SignalHuntDatabase,
+  now: string | number | Date = Date.now(),
+): Promise<Event | undefined> {
+  const event = await getConfiguredActiveEvent(db);
+  return event && getEventParticipationDecision(event, now).code === 'ALLOWED' ? event : undefined;
 }
 
 export async function markDrawRevealed(

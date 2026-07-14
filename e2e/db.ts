@@ -76,7 +76,7 @@ export async function readStore<T>(page: Page, store: string): Promise<T[]> {
  * event. RESULT appears ~5s after the commit succeeds (see displayTimeline).
  */
 export async function drawAndRevealPrize(page: Page, timeout = 15_000): Promise<string> {
-  await page.getByRole('button', { name: '触碰屏幕 · 开始捕获' }).click();
+  await page.getByRole('button', { name: '点亮好运' }).click();
   const prizeLocator = page.locator('.display-result-prize');
   await expect(prizeLocator).toBeVisible({ timeout });
   const name = (await prizeLocator.textContent())?.trim() ?? '';

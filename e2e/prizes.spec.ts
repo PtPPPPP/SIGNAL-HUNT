@@ -66,7 +66,7 @@ test('E2E-5 depleted prize leaves the pool; next draw errors out', async ({ page
   // Next draw -> no active prize in the pool -> ERROR (staff assist), no over-award.
   await page.goto('/display');
   await expect(page.locator('main')).toHaveAttribute('data-state', 'ATTRACT');
-  await page.getByRole('button', { name: '触碰屏幕 · 开始捕获' }).click();
+  await page.getByRole('button', { name: '点亮好运' }).click();
   await expect(page.locator('main')).toHaveAttribute('data-state', 'ERROR');
 
   // Still exactly one record and one unit consumed.
