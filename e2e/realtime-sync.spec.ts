@@ -11,12 +11,16 @@ test('admin changes sync to display without refresh', async ({ context, page: di
   await importPrizeJson(control, SINGLE_PRIZE_JSON);
 
   await control.goto('/admin/event');
-  const activeEventRow = control.locator('tbody tr').filter({ has: control.locator('.status-badge') }).first();
-  await activeEventRow.locator('button').filter({ hasText: /暂停|Pause/i }).click();
+  const activeEventRow = control.locator('tbody tr').filter({ hasText: /进行中|ACTIVE/i }).first();
+  const pauseButton = activeEventRow.getByRole('button', { name: /暂停|Pause/i });
+  await expect(pauseButton).toBeEnabled();
+  await pauseButton.click();
   await expect(display.locator('main')).toHaveAttribute('data-state', 'PAUSED');
 
   const pausedEventRow = control.locator('tbody tr').filter({ hasText: /暂停|PAUSED|已暂停/ }).first();
-  await pausedEventRow.locator('button').filter({ hasText: /激活|Activate/i }).click();
+  const activateButton = pausedEventRow.getByRole('button', { name: /激活|Activate/i });
+  await expect(activateButton).toBeEnabled();
+  await activateButton.click();
   await expect(display.locator('main')).toHaveAttribute('data-state', 'ATTRACT');
 
   await expect(drawAndRevealPrize(display)).resolves.toBe('E2E Only Prize');

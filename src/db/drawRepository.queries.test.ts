@@ -10,6 +10,7 @@ import {
   countWinsByPrize,
   getLatestRecord,
   getRecordsByEvent,
+  readDisplayDatabaseSnapshot,
   redeemDrawRecord,
   seedEvent,
   seedPrizes,
@@ -141,6 +142,28 @@ describe('draw repository indexed queries', () => {
 
     const latest = await getLatestRecord(db, 'event-1');
     expect(latest?.id).toBe('record-last');
+  });
+
+  it('reads display state from the active event before paused or draft events', async () => {
+    await seedEvent(db, event({ id: 'draft', code: 'DRAFT', status: 'DRAFT', createdAt: '2026-07-06T03:00:00.000Z' }));
+    await seedEvent(db, event({ id: 'paused', code: 'PAUSED', status: 'PAUSED', createdAt: '2026-07-06T02:00:00.000Z' }));
+    await seedEvent(db, event({ id: 'active', code: 'ACTIVE', status: 'ACTIVE', createdAt: '2026-07-06T01:00:00.000Z' }));
+    await seedPrizes(db, [prize()]);
+    const committed = await commitPersistentDraw(db, {
+      eventId: 'active',
+      random: () => 0,
+      createId: (prefix) => `${prefix}-active`,
+    });
+
+    const snapshot = await readDisplayDatabaseSnapshot(db, undefined, Date.parse('2026-07-06T04:00:00.000Z'));
+
+    expect(snapshot).toMatchObject({
+      configuredEvent: { id: 'active' },
+      eventCount: 3,
+      participation: { code: 'ALLOWED' },
+      session: { eventId: 'active' },
+      record: { id: committed.record.id },
+    });
   });
 
   it('commit counts wins scoped to the active event, not across events', async () => {

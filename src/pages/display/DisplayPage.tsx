@@ -14,12 +14,12 @@ import {
   clearActiveDrawSession,
   commitPersistentDraw,
   markDrawRevealed,
+  readDisplayDatabaseSnapshot,
+  type DisplayDatabaseSnapshot,
 } from '../../db/drawRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import {
   EventParticipationError,
-  getEventParticipationDecision,
-  type EventParticipationDecision,
   type EventParticipationErrorCode,
 } from '../../domain/draw/eventParticipation';
 import { ensureDemoSeed } from '../../features/display/displayBootstrap';
@@ -36,19 +36,11 @@ import { POST_COMMIT_TIMELINE_STEPS } from '../../features/display/displayTimeli
 import { BrandMark } from '../../features/brand/BrandMark';
 import { subscribeAppChanges } from '../../features/sync/appSync';
 import { SignalCanvas } from '../../visual/signal-engine/SignalCanvas';
-import type { DrawRecord, DrawSession, Event } from '../../domain/draw/types';
+import type { Event } from '../../domain/draw/types';
 
 type DisplayPageProps = {
   db?: SignalHuntDatabase;
   now?: () => number;
-};
-
-type DisplayDatabaseSnapshot = {
-  configuredEvent?: Event;
-  eventCount: number;
-  participation?: EventParticipationDecision;
-  record?: DrawRecord;
-  session?: DrawSession;
 };
 
 type BlockedMessage = { title: string; subtitle: string; detail?: string; startsAt?: string } | null;
@@ -69,7 +61,7 @@ type DisplaySnapshotHandlers = {
 // RESULT 永久停留，直到工作人员手动结束。开启后点击「下一位参与者」需二次确认，
 // 防止中奖者拍照 / 指屏时误触退出。展会正式使用建议保持开启。
 const CONFIRM_BEFORE_RESET_RESULT = true;
-const RESETTING_HOLD_MS = 700;
+export const RESETTING_HOLD_MS = 700;
 
 export function DisplayPage({ db = signalHuntDatabase, now = systemNow }: DisplayPageProps) {
   const [displayState, setDisplayState] = useState<DisplayState>(createInitialDisplayState);
@@ -529,41 +521,6 @@ function log(type: LogEntryType, details: Record<string, unknown>): void {
   logStructured(type, details);
 }
 
-async function readDisplayDatabaseSnapshot(
-  db: SignalHuntDatabase,
-  currentEventId?: string,
-  now: number = Date.now(),
-): Promise<DisplayDatabaseSnapshot> {
-  const [events, sessions] = await Promise.all([
-    db.events.toArray(),
-    db.drawSessions.where('status').equals('COMMITTED').toArray(),
-  ]);
-  const configuredEvent =
-    latestEvent(events.filter((event) => event.status === 'ACTIVE')) ??
-    latestEvent(events.filter((event) => event.status === 'PAUSED')) ??
-    latestEvent(events);
-  // Persisted configuration is authoritative. A backup restore can replace the
-  // current event id while this window is open, so do not keep watching a stale
-  // in-memory id ahead of the newly configured event.
-  const watchedEventId = configuredEvent?.id ?? currentEventId;
-  const session = watchedEventId
-    ? sessions.find((candidate) => candidate.eventId === watchedEventId)
-    : undefined;
-  const record = session ? await db.drawRecords.get(session.committedRecordId) : undefined;
-
-  if (session && !record) {
-    throw new Error(`Committed draw record ${session.committedRecordId} was not found.`);
-  }
-
-  return {
-    configuredEvent,
-    eventCount: events.length,
-    participation: configuredEvent ? getEventParticipationDecision(configuredEvent, now) : undefined,
-    record,
-    session,
-  };
-}
-
 function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: DisplaySnapshotHandlers): void {
   const {
     currentState,
@@ -654,10 +611,6 @@ function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: D
     setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
   }
   requestInitialAdmin(snapshot.eventCount, initialAdminRequestedRef);
-}
-
-function latestEvent(events: Event[]): Event | undefined {
-  return [...events].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
 }
 
 function toParticipationBlockedMessage(code: EventParticipationErrorCode, event: Event): NonNullable<BlockedMessage> {

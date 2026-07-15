@@ -5,6 +5,7 @@ import { AdminButton } from '../../components/ui/AdminUI';
 import { signalHuntDatabase, type SignalHuntDatabase, DATABASE_NAME, DATABASE_VERSION } from '../../db/database';
 import { getConfiguredActiveEvent, recoverCommittedDraw } from '../../db/drawRepository';
 import { clearStructuredLog } from '../../features/diagnostics/errorLog';
+import { sampleFps } from '../../features/diagnostics/fpsSampler';
 import {
   buildDiagnosticExport,
   readLogs,
@@ -122,38 +123,6 @@ const emptySnapshot: Snapshot = {
   preflight: { ready: false, checks: [] },
   log: [],
 };
-
-function sampleFps(durationMs: number, onSample: (fps: number) => void): () => void {
-  if (typeof requestAnimationFrame !== 'function') {
-    onSample(0);
-
-    return () => {};
-  }
-
-  let frames = 0;
-  let cancelled = false;
-  const start = performance.now();
-
-  const tick = () => {
-    if (cancelled) {
-      return;
-    }
-
-    frames += 1;
-
-    if (performance.now() - start < durationMs) {
-      requestAnimationFrame(tick);
-    } else {
-      onSample(Math.max(0, Math.round((frames * 1000) / durationMs)));
-    }
-  };
-
-  requestAnimationFrame(tick);
-
-  return () => {
-    cancelled = true;
-  };
-}
 
 function detectWebGL(): boolean {
   try {

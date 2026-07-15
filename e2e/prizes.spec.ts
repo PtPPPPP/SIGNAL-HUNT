@@ -54,9 +54,9 @@ test('E2E-5 depleted prize leaves the pool; next draw errors out', async ({ page
 
 test('E2E-6 valid JSON imports; invalid JSON is rejected without polluting the table', async ({ page }) => {
   await page.goto('/admin/prizes');
-  const baseline = await countStore(page, 'prizes');
   const jsonField = page.locator('.admin-json-field textarea');
   await expect(jsonField).toBeVisible();
+  const baseline = await countStore(page, 'prizes');
   const importButton = page.locator('.admin-toolbar button').nth(2);
 
   await jsonField.fill('{ "this": "is not a prize array"');

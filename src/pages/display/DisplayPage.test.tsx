@@ -14,7 +14,7 @@ import {
 } from '../../db/drawRepository';
 import { createSignalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import type { Event, Prize } from '../../domain/draw/types';
-import { DisplayPage } from './DisplayPage';
+import { DisplayPage, RESETTING_HOLD_MS } from './DisplayPage';
 
 const event: Event = {
   id: 'event-1',
@@ -166,15 +166,23 @@ describe('DisplayPage draw integration', () => {
     });
     expect(screen.getByRole('alertdialog')).toBeInTheDocument();
 
-    // 确认并返回 → 回到 ATTRACT
+    // Keep the asynchronous repository completion inside act. Dexie uses real
+    // IndexedDB scheduling, so only the business completion is controlled here.
+    const pendingClear = createDeferred<void>();
+    const originalClearActiveDrawSession = drawRepository.clearActiveDrawSession;
+    vi.spyOn(drawRepository, 'clearActiveDrawSession').mockImplementationOnce(async (...args) => {
+      await pendingClear.promise;
+      await originalClearActiveDrawSession(...args);
+    });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /确认并返回/ }));
+      pendingClear.resolve();
+      await pendingClear.promise;
+      await Promise.resolve();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, RESETTING_HOLD_MS));
     });
-
-    await waitFor(
-      () => expect(screen.getByRole('button', { name: /点亮好运/ })).toBeInTheDocument(),
-      { timeout: 3000 },
-    );
+    await expect(db.drawSessions.count()).resolves.toBe(0);
+    expect(screen.getByRole('button', { name: /点亮好运/ })).toBeInTheDocument();
   }, 15000);
 
   it('does not exit RESULT when the result area is tapped repeatedly', async () => {

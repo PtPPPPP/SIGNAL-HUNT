@@ -3,9 +3,9 @@ import {
   assertEventParticipationAllowed,
   getEventParticipationDecision,
   normalizeEventTimestamps,
+  type EventParticipationDecision,
 } from '../domain/draw/eventParticipation';
-import type { CommitDrawResult, Event, Prize } from '../domain/draw/types';
-import type { DrawRecord, DrawSession } from '../domain/draw/types';
+import type { CommitDrawResult, DrawRecord, DrawSession, Event, Prize } from '../domain/draw/types';
 import type { SignalHuntDatabase } from './database';
 
 export type DrawRepositoryErrorCode =
@@ -53,6 +53,15 @@ export type VoidActiveDrawInput = {
   recordId?: string;
   reason: string;
   now?: () => string;
+};
+
+/** The persisted state the display needs to reconcile its UI. */
+export type DisplayDatabaseSnapshot = {
+  configuredEvent?: Event;
+  eventCount: number;
+  participation?: EventParticipationDecision;
+  record?: DrawRecord;
+  session?: DrawSession;
 };
 
 export async function seedEvent(db: SignalHuntDatabase, event: Event): Promise<void> {
@@ -189,6 +198,45 @@ export async function getConfiguredActiveEvent(db: SignalHuntDatabase): Promise<
   }
 
   return [...activeEvents].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+}
+
+/**
+ * Reads the authoritative display state in one place so presentation code does
+ * not duplicate event selection, session lookup, or record integrity checks.
+ */
+export async function readDisplayDatabaseSnapshot(
+  db: SignalHuntDatabase,
+  currentEventId?: string,
+  now: number = Date.now(),
+): Promise<DisplayDatabaseSnapshot> {
+  const [events, sessions] = await Promise.all([
+    db.events.toArray(),
+    db.drawSessions.where('status').equals('COMMITTED').toArray(),
+  ]);
+  const configuredEvent =
+    latestEvent(events.filter((event) => event.status === 'ACTIVE')) ??
+    latestEvent(events.filter((event) => event.status === 'PAUSED')) ??
+    latestEvent(events);
+  // Persisted configuration is authoritative. A backup restore can replace the
+  // current event id while this window is open, so do not keep watching a stale
+  // in-memory id ahead of the newly configured event.
+  const watchedEventId = configuredEvent?.id ?? currentEventId;
+  const session = watchedEventId
+    ? sessions.find((candidate) => candidate.eventId === watchedEventId)
+    : undefined;
+  const record = session ? await db.drawRecords.get(session.committedRecordId) : undefined;
+
+  if (session && !record) {
+    throw new Error(`Committed draw record ${session.committedRecordId} was not found.`);
+  }
+
+  return {
+    configuredEvent,
+    eventCount: events.length,
+    participation: configuredEvent ? getEventParticipationDecision(configuredEvent, now) : undefined,
+    record,
+    session,
+  };
 }
 
 /** Returns an event only while real participation is allowed at the supplied time. */
@@ -354,4 +402,8 @@ export async function voidActiveDraw(
 
     return { status: 'VOIDED', record: voidedRecord };
   });
+}
+
+function latestEvent(events: Event[]): Event | undefined {
+  return [...events].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
 }
