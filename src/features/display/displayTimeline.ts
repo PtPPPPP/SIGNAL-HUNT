@@ -26,7 +26,7 @@ export const DRAW_NARRATIVE_EVENTS: readonly DisplayEvent['type'][] = [
  * fires immediately on touch and `COMMIT_SUCCEEDED` fires when the commit
  * resolves, so neither belongs on a timer. Timings are relative to commit
  * success. RESULT is intentionally NOT auto-reset: the result stays on screen
- * until a staff member ends it manually (see DisplayPage "下一位参与者"). Hence
+ * until an operator ends it manually (see DisplayPage "下一位参与者"). Hence
  * RESET_COMPLETE is not part of this timed sequence.
  */
 export const POST_COMMIT_TIMELINE_STEPS: readonly DrawTimelineStep[] = [

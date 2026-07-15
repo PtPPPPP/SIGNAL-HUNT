@@ -125,7 +125,7 @@ export function AdminRecordsPage({ db = signalHuntDatabase }: AdminRecordsPagePr
                   <td>{record.redeemed ? '是' : '-'}</td>
                   <td>{formatAdminDateTime(record.redeemedAt)}</td>
                   <td>{record.participantId ?? '-'}</td>
-                  <td>在 /staff 处理</td>
+                  <td>在后台记录页处理</td>
                 </tr>
               ))}
             </tbody>

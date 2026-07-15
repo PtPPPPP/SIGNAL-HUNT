@@ -29,9 +29,9 @@ describe('Electron renderer route resolution', () => {
   });
 
   it('recognizes an already loaded control route without reloading the renderer', () => {
-    expect(rendererUrlMatchesRoute('file:///D:/Program/signal-hunt/dist/index.html#/staff', '/staff')).toBe(true);
+    expect(rendererUrlMatchesRoute('file:///D:/Program/signal-hunt/dist/index.html#/admin/system', '/admin/system')).toBe(true);
     expect(rendererUrlMatchesRoute('http://127.0.0.1:5180/#/admin/dashboard', '/admin/dashboard')).toBe(true);
-    expect(rendererUrlMatchesRoute('file:///D:/Program/signal-hunt/dist/index.html#/staff', '/admin/dashboard')).toBe(false);
-    expect(rendererUrlMatchesRoute('not-a-url', '/staff')).toBe(false);
+    expect(rendererUrlMatchesRoute('file:///D:/Program/signal-hunt/dist/index.html#/admin/system', '/admin/dashboard')).toBe(false);
+    expect(rendererUrlMatchesRoute('not-a-url', '/admin/system')).toBe(false);
   });
 });

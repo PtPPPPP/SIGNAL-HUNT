@@ -9,7 +9,6 @@ export type SignalHuntDesktopApi = {
   control: {
     focusDisplay: () => Promise<void>;
     openAdmin: () => Promise<void>;
-    openStaff: () => Promise<void>;
   };
   system: {
     getDisplayWindowMode: () => Promise<DisplayWindowMode>;

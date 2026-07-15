@@ -97,7 +97,7 @@ if (bundleText) {
 
 // 4. core routes present in the bundle.
 if (bundleText) {
-  const expectedRoutes = ['/display', '/diagnostics', '/staff', '/admin/dashboard'];
+  const expectedRoutes = ['/display', '/diagnostics', '/admin/dashboard'];
   const missing = expectedRoutes.filter(
     (r) => !bundleText.includes(`"${r}"`) && !bundleText.includes(`'${r}'`),
   );

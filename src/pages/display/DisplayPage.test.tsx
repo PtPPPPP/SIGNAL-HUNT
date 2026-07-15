@@ -205,7 +205,7 @@ describe('DisplayPage draw integration', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   }, 15000);
 
-  it('returns to ATTRACT when staff clears the session in another window', async () => {
+  it('returns to ATTRACT when an operator clears the session in another window', async () => {
     await seedEvent(db, event);
     await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
     await commitPersistentDraw(db, {
@@ -253,7 +253,7 @@ describe('DisplayPage draw integration', () => {
     await expect(db.drawSessions.count()).resolves.toBe(1);
   });
 
-  it('does not let the delayed reveal overwrite an early staff redemption', async () => {
+  it('does not let the delayed reveal overwrite an early operator redemption', async () => {
     await seedEvent(db, event);
     await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
     render(<DisplayPage db={db} />);
@@ -276,7 +276,7 @@ describe('DisplayPage draw integration', () => {
     });
   }, 12000);
 
-  it('returns to ATTRACT when staff voids before the delayed reveal', async () => {
+  it('returns to ATTRACT when an operator voids before the delayed reveal', async () => {
     await seedEvent(db, event);
     await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 5 })]);
     render(<DisplayPage db={db} />);

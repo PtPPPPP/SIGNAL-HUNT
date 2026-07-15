@@ -1,4 +1,5 @@
 import type { DrawRecord, Event, Prize, PrizeReleasePoint } from './types';
+import { getEventParticipationProgress } from './eventParticipation';
 
 export type PrizePacingStatus =
   | 'ON_PACE'
@@ -196,19 +197,7 @@ function calculateExpectedWins(prize: Prize, eventProgress: number): number {
 }
 
 function calculateEventProgress(event: Event | undefined, currentTime: string): number {
-  if (!event?.startAt || !event.endAt) {
-    return 0;
-  }
-
-  const startMs = Date.parse(event.startAt);
-  const endMs = Date.parse(event.endAt);
-  const nowMs = Date.parse(currentTime);
-
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(nowMs) || endMs <= startMs) {
-    return 0;
-  }
-
-  return clamp((nowMs - startMs) / (endMs - startMs), 0, 1);
+  return getEventParticipationProgress(event, currentTime);
 }
 
 function countWins(prizeId: string, records: readonly DrawRecord[]): number {

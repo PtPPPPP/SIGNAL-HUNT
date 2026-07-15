@@ -115,6 +115,5 @@ function attachControlShortcuts(window: BrowserWindow, handlers?: ControlWindowH
 
     event.preventDefault();
     if (action === 'OPEN_ADMIN') void handlers.openAdmin();
-    if (action === 'OPEN_STAFF') void handlers.openStaff();
   });
 }

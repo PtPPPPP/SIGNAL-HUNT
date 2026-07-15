@@ -1,19 +1,6 @@
-import type { Page } from '@playwright/test';
+﻿import type { BrowserContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-/**
- * Raw IndexedDB read helpers for E2E assertions.
- *
- * The app uses Dexie, but Dexie stores are plain IndexedDB object stores, so we
- * can read them directly from the page without exposing any test hook in the app
- * bundle. This lets E2E assert on the real persisted state (record counts, prize
- * inventory, redemption flag) at the data layer — which is exactly what
- * "database not polluted" / "no second record" checks need.
- *
- * The database name matches DATABASE_NAME in src/db/database.ts ('signal-hunt').
- */
-
-/** Count rows in a given store (e.g. 'drawRecords', 'prizes'). */
 export async function countStore(page: Page, store: string): Promise<number> {
   return page.evaluate(async (storeName) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -31,7 +18,6 @@ export async function countStore(page: Page, store: string): Promise<number> {
   }, store);
 }
 
-/** Read a single record by id from a store. */
 export async function getRecord<T>(page: Page, store: string, id: string): Promise<T | undefined> {
   return page.evaluate(
     async ({ storeName, key }) => {
@@ -52,7 +38,6 @@ export async function getRecord<T>(page: Page, store: string, id: string): Promi
   );
 }
 
-/** Read every row of a store (small tables only — prizes, drawSessions). */
 export async function readStore<T>(page: Page, store: string): Promise<T[]> {
   return page.evaluate(async (storeName) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -70,13 +55,8 @@ export async function readStore<T>(page: Page, store: string): Promise<T[]> {
   }, store);
 }
 
-/**
- * Touch the display to start a draw and resolve with the revealed prize name.
- * Assumes the page is already on /display in the ATTRACT state with a drawable
- * event. RESULT appears ~5s after the commit succeeds (see displayTimeline).
- */
 export async function drawAndRevealPrize(page: Page, timeout = 15_000): Promise<string> {
-  await page.getByRole('button', { name: '点亮好运' }).click();
+  await page.locator('.primary-touch-target').click();
   const prizeLocator = page.locator('.display-result-prize');
   await expect(prizeLocator).toBeVisible({ timeout });
   const name = (await prizeLocator.textContent())?.trim() ?? '';
@@ -86,30 +66,54 @@ export async function drawAndRevealPrize(page: Page, timeout = 15_000): Promise<
   return name;
 }
 
-/**
- * Seed the demo event (by visiting /display once in DEV, which auto-seeds), then
- * replace the prize table with `json`. After this the active demo event is
- * drawable with exactly the imported prizes — the demo prizes are wiped by the
- * transactional replace, so the pool is deterministic.
- */
+export async function setDefaultEventOpenTime(target: BrowserContext | Page): Promise<void> {
+  await target.addInitScript(() => {
+    const fixedNow = new Date('2026-07-15T02:00:00.000Z').getTime();
+    const RealDate = Date;
+
+    class FixedDate extends RealDate {
+      constructor(value?: string | number | Date) {
+        if (arguments.length === 0) {
+          super(fixedNow);
+          return;
+        }
+
+        super(value as string | number | Date);
+      }
+
+      static now() {
+        return fixedNow;
+      }
+    }
+
+    Object.setPrototypeOf(FixedDate, RealDate);
+    FixedDate.prototype = RealDate.prototype;
+    window.Date = FixedDate as DateConstructor;
+  });
+}
+
 export async function seedDemoThenImportPrizes(page: Page, json: string): Promise<void> {
+  await setDefaultEventOpenTime(page);
   await page.goto('/display');
   await expect(page.locator('main')).toHaveAttribute('data-state', 'ATTRACT');
 
-  await page.goto('/admin/prizes');
-  await expect(page.getByRole('heading', { name: '奖品列表' })).toBeVisible();
-  await page.getByLabel('奖品 JSON').fill(json);
-  await page.getByRole('button', { name: '导入 JSON' }).click();
-  await expect(page.getByText(/奖品 JSON 已导入/)).toBeVisible();
+  await importPrizeJson(page, json);
 }
 
-/** A valid three-tier prize config used by import + persistence tests. */
+export async function importPrizeJson(page: Page, json: string): Promise<void> {
+  await page.goto('/admin/prizes');
+  const jsonField = page.locator('.admin-json-field textarea');
+  await expect(jsonField).toBeVisible();
+  await jsonField.fill(json);
+  await page.locator('.admin-toolbar button').nth(2).click();
+}
+
 export const THREE_PRIZE_JSON = JSON.stringify(
   [
     {
       id: 'e2e-first',
-      name: 'E2E一等奖',
-      shortName: 'E2E一等奖',
+      name: 'E2E First Prize',
+      shortName: 'E2E First',
       level: 1,
       inventoryTotal: 1,
       inventoryRemaining: 1,
@@ -119,8 +123,8 @@ export const THREE_PRIZE_JSON = JSON.stringify(
     },
     {
       id: 'e2e-second',
-      name: 'E2E二等奖',
-      shortName: 'E2E二等奖',
+      name: 'E2E Second Prize',
+      shortName: 'E2E Second',
       level: 2,
       inventoryTotal: 5,
       inventoryRemaining: 5,
@@ -130,8 +134,8 @@ export const THREE_PRIZE_JSON = JSON.stringify(
     },
     {
       id: 'e2e-third',
-      name: 'E2E三等奖',
-      shortName: 'E2E三等奖',
+      name: 'E2E Third Prize',
+      shortName: 'E2E Third',
       level: 3,
       inventoryTotal: 20,
       inventoryRemaining: 20,
@@ -144,17 +148,12 @@ export const THREE_PRIZE_JSON = JSON.stringify(
   2,
 );
 
-/**
- * A single enabled prize with one unit of stock — used to make a draw
- * deterministic (only one prize is drawable, so it must win) and to test
- * inventory exhaustion. The other two tiers are disabled with zero stock.
- */
 export const SINGLE_PRIZE_JSON = JSON.stringify(
   [
     {
       id: 'e2e-only',
-      name: 'E2E唯一奖',
-      shortName: 'E2E唯一奖',
+      name: 'E2E Only Prize',
+      shortName: 'E2E Only',
       level: 1,
       inventoryTotal: 1,
       inventoryRemaining: 1,
@@ -164,8 +163,8 @@ export const SINGLE_PRIZE_JSON = JSON.stringify(
     },
     {
       id: 'e2e-disabled-a',
-      name: 'E2E禁用A',
-      shortName: 'E2E禁用A',
+      name: 'E2E Disabled A',
+      shortName: 'E2E Disabled A',
       level: 2,
       inventoryTotal: 0,
       inventoryRemaining: 0,
@@ -175,8 +174,8 @@ export const SINGLE_PRIZE_JSON = JSON.stringify(
     },
     {
       id: 'e2e-disabled-b',
-      name: 'E2E禁用B',
-      shortName: 'E2E禁用B',
+      name: 'E2E Disabled B',
+      shortName: 'E2E Disabled B',
       level: 3,
       inventoryTotal: 0,
       inventoryRemaining: 0,

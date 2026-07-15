@@ -6,7 +6,6 @@ import { installGlobalErrorCapture } from '../features/diagnostics/errorLog';
 installGlobalErrorCapture();
 
 const DisplayPage = lazy(() => import('../pages/display/DisplayPage').then((module) => ({ default: module.DisplayPage })));
-const StaffPage = lazy(() => import('../pages/staff/StaffPage').then((module) => ({ default: module.StaffPage })));
 const AdminDashboardPage = lazy(() =>
   import('../pages/admin/AdminDashboardPage').then((module) => ({ default: module.AdminDashboardPage })),
 );
@@ -47,7 +46,6 @@ export function App() {
           <Route path="/admin/participants" element={<AdminShell title="参与者" />} />
           <Route path="/admin/records" element={<AdminRecordsPage />} />
           <Route path="/admin/system" element={<AdminSystemPage />} />
-          <Route path="/staff" element={<StaffPage />} />
           <Route path="/diagnostics" element={<AdminDiagnosticsPage />} />
         </Routes>
       </Suspense>

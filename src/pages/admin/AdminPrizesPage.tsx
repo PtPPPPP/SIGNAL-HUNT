@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { AdminButton, EmptyState, StatusBadge } from '../../components/ui/AdminUI';
-import { listDrawRecords, listPrizes, replacePrizes, savePrize } from '../../db/adminRepository';
+import {
+  listDrawRecords,
+  listPrizes,
+  normalizeLegacyPrizeLabels,
+  replacePrizes,
+  resetPrizeState,
+  savePrize,
+} from '../../db/adminRepository';
 import { getConfiguredActiveEvent } from '../../db/drawRepository';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import { calculatePrizePacing } from '../../domain/draw/prizePacing';
@@ -12,6 +19,7 @@ import {
   validatePrize,
 } from '../../domain/draw/prizeValidation';
 import { parsePrizeImport, stringifyPrizeExport } from '../../features/admin/prizeImport';
+import { createDefaultPrizePool } from '../../features/display/displayBootstrap';
 import {
   PACING_STATUS_LABELS,
   PROBABILITY_MODE_LABELS,
@@ -92,6 +100,7 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
   const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(defaultForm) || jsonText !== exportText;
 
   const refresh = useCallback(async (options: { syncJsonText: boolean | 'ifEmpty' }) => {
+    await normalizeLegacyPrizeLabels(db);
     const [nextPrizes, nextRecords, event] = await Promise.all([
       listPrizes(db),
       listDrawRecords(db),
@@ -153,6 +162,37 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
     }
   };
 
+  const handleResetPrizeState = async () => {
+    if (!window.confirm('确认重置奖品库存和当前活动抽奖记录？')) {
+      return;
+    }
+
+    try {
+      await resetPrizeState(db, activeEvent?.id);
+      publishAppChange('PRIZES_UPDATED', activeEvent?.id);
+      setMessage('奖品库存和当前活动抽奖记录已重置。');
+      await refresh({ syncJsonText: true });
+    } catch {
+      setMessage('重置失败，请检查数据后重试。');
+    }
+  };
+
+  const handleRestoreDefaultPrizePool = async () => {
+    if (!window.confirm('确认恢复默认奖池？这会重建一等奖、二等奖、三等奖和谢谢参与，并清空当前活动抽奖记录。')) {
+      return;
+    }
+
+    try {
+      await replacePrizes(db, createDefaultPrizePool());
+      await resetPrizeState(db, activeEvent?.id);
+      publishAppChange('PRIZES_UPDATED', activeEvent?.id);
+      setMessage('默认奖池已恢复：一等奖、二等奖、三等奖、谢谢参与。');
+      await refresh({ syncJsonText: true });
+    } catch {
+      setMessage('恢复默认奖池失败，请检查数据后重试。');
+    }
+  };
+
   return (
     <AdminLayout title="奖品管理" db={db} hasUnsavedChanges={hasUnsavedChanges}>
       {loading ? <section className="admin-panel">正在读取奖品...</section> : null}
@@ -161,6 +201,8 @@ export function AdminPrizesPage({ db = signalHuntDatabase }: AdminPrizesPageProp
         <AdminButton onClick={() => setForm(defaultForm)}>新增奖品</AdminButton>
         <AdminButton variant="secondary" onClick={() => setJsonText(exportText)}>导出 JSON</AdminButton>
         <AdminButton variant="secondary" onClick={() => void handleImport()}>导入 JSON</AdminButton>
+        <AdminButton variant="secondary" onClick={() => void handleRestoreDefaultPrizePool()}>恢复默认奖池</AdminButton>
+        <AdminButton variant="danger" onClick={() => void handleResetPrizeState()}>重置奖品</AdminButton>
       </section>
 
       <section className="admin-prize-editor">

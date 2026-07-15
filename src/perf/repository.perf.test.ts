@@ -96,7 +96,7 @@ function makeRecord(eventId: string, prizeId: string, index: number): DrawRecord
     eventId,
     sessionId: `session-${eventId}-${index}`,
     prizeId,
-    prizeNameSnapshot: prizeId === TARGET_PRIZE ? '一等奖' : '参与奖',
+    prizeNameSnapshot: prizeId === TARGET_PRIZE ? '一等奖' : '谢谢参与',
     createdAt: committedAt,
     committedAt,
     redeemed: false,

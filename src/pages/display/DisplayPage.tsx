@@ -339,7 +339,7 @@ export function DisplayPage({ db = signalHuntDatabase, now = systemNow }: Displa
 
   // Dexie liveQuery propagates IndexedDB mutations across same-origin Electron
   // windows through BroadcastChannel. The display therefore reacts immediately
-  // when staff clears a result or an operator activates/pauses an event.
+    // when an operator clears a result or activates/pauses an event.
   useEffect(() => {
     if (!databaseReady) return;
 

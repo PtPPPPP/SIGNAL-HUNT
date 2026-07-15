@@ -12,6 +12,12 @@ export interface Event {
    */
   startAt?: string;
   endAt?: string;
+  participationWindows?: EventParticipationWindow[];
+}
+
+export interface EventParticipationWindow {
+  startAt: string;
+  endAt: string;
 }
 
 export interface Prize {

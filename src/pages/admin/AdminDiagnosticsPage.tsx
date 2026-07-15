@@ -289,7 +289,7 @@ async function checkLogoAsset(): Promise<boolean> {
 /**
  * Composes already-gathered snapshot data into a single readiness verdict.
  * `ready` is true iff no check has status 'fail'. Warnings (e.g. an unfinished
- * session, dev mode) do not block but must be reviewed by staff.
+ * session, dev mode) do not block but must be reviewed by operators.
  *
  * Offline is NOT a failure: the app is local-first (AGENTS.md §5), so the
  * network row is informational only.

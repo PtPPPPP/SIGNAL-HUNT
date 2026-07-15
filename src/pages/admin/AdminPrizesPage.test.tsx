@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
 import { listPrizes } from '../../db/adminRepository';
@@ -48,6 +48,7 @@ describe('AdminPrizesPage', () => {
     });
     await user.click(screen.getByRole('button', { name: '导入 JSON' }));
 
+    expect(await screen.findByText('奖品 JSON 已导入。')).toBeInTheDocument();
     await waitFor(async () => {
       await expect(listPrizes(db)).resolves.toMatchObject([{ id: 'imported-prize' }]);
     });
@@ -152,5 +153,123 @@ describe('AdminPrizesPage', () => {
 
     expect(await screen.findByText('暂时锁定')).toBeInTheDocument();
     expect(screen.getAllByText('0.00').length).toBeGreaterThan(0);
+  });
+  it('resets prize inventory and clears current event draw state', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    await db.events.put({
+      id: 'event-1',
+      name: 'Event',
+      code: 'EVENT',
+      status: 'ACTIVE',
+      createdAt: '2026-07-14T00:00:00.000Z',
+    });
+    await db.prizes.put({
+      id: 'prize-1',
+      name: 'Prize A',
+      shortName: 'A',
+      level: 1,
+      inventoryTotal: 3,
+      inventoryRemaining: 1,
+      weight: 1,
+      enabled: true,
+    });
+    await db.drawRecords.put({
+      id: 'record-1',
+      eventId: 'event-1',
+      sessionId: 'session-1',
+      prizeId: 'prize-1',
+      prizeNameSnapshot: 'Prize A',
+      createdAt: '2026-07-15T01:00:00.000Z',
+      committedAt: '2026-07-15T01:00:00.000Z',
+      redeemed: false,
+      status: 'COMMITTED',
+    });
+    await db.drawSessions.put({
+      id: 'session-1',
+      eventId: 'event-1',
+      status: 'COMMITTED',
+      committedRecordId: 'record-1',
+      createdAt: '2026-07-15T01:00:00.000Z',
+      committedAt: '2026-07-15T01:00:00.000Z',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/prizes']}>
+        <AdminPrizesPage db={db} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Prize A');
+    await user.click(screen.getByRole('button', { name: '重置奖品' }));
+
+    await waitFor(async () => {
+      const [prize] = await listPrizes(db);
+      expect(prize).toMatchObject({ inventoryRemaining: 3, inventoryTotal: 3 });
+      await expect(db.drawRecords.count()).resolves.toBe(0);
+      await expect(db.drawSessions.count()).resolves.toBe(0);
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('restores the packaged default prize pool when old local data exists', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    await db.events.put({
+      id: 'event-1',
+      name: 'Event',
+      code: 'EVENT',
+      status: 'ACTIVE',
+      createdAt: '2026-07-14T00:00:00.000Z',
+    });
+    await db.prizes.put({
+      id: 'legacy-prize',
+      name: 'Legacy Prize',
+      shortName: 'Legacy',
+      level: 1,
+      inventoryTotal: 3,
+      inventoryRemaining: 1,
+      weight: 1,
+      enabled: true,
+    });
+    await db.drawRecords.put({
+      id: 'record-1',
+      eventId: 'event-1',
+      sessionId: 'session-1',
+      prizeId: 'legacy-prize',
+      prizeNameSnapshot: 'Legacy Prize',
+      createdAt: '2026-07-15T01:00:00.000Z',
+      committedAt: '2026-07-15T01:00:00.000Z',
+      redeemed: false,
+      status: 'COMMITTED',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/prizes']}>
+        <AdminPrizesPage db={db} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Legacy Prize');
+    await user.click(screen.getByRole('button', { name: '恢复默认奖池' }));
+
+    await waitFor(async () => {
+      const prizes = await listPrizes(db);
+      const byName = new Map(prizes.map((prize) => [prize.name, prize]));
+      expect([...byName.keys()].sort()).toEqual(['一等奖', '三等奖', '二等奖', '谢谢参与']);
+      expect(byName.get('谢谢参与')).toMatchObject({
+        level: 99,
+        inventoryTotal: 1344,
+        inventoryRemaining: 1344,
+        weight: 868,
+        probabilityMode: 'FIXED',
+      });
+      await expect(db.drawRecords.count()).resolves.toBe(0);
+    });
+
+    confirmSpy.mockRestore();
   });
 });

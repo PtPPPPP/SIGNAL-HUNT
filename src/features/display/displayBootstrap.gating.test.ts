@@ -19,7 +19,7 @@ describe('ensureDemoSeed production gating', () => {
     await db.delete();
   });
 
-  it('does NOT seed when VITE_ENABLE_DEMO_SEED is explicitly false (production behavior)', async () => {
+  it('does NOT seed when VITE_ENABLE_DEMO_SEED is explicitly false', async () => {
     vi.stubEnv('VITE_ENABLE_DEMO_SEED', 'false');
 
     await ensureDemoSeed(db);
@@ -28,8 +28,7 @@ describe('ensureDemoSeed production gating', () => {
     await expect(db.events.count()).resolves.toBe(0);
   });
 
-  it('seeds in dev/test when the flag is unset', async () => {
-    // Default Vitest environment: DEV=true, flag unset → seeding enabled.
+  it('seeds by default when the flag is unset', async () => {
     await ensureDemoSeed(db);
 
     await expect(db.events.count()).resolves.toBeGreaterThan(0);

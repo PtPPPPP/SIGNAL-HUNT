@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test';
+﻿import { expect, test } from '@playwright/test';
+
+import { setDefaultEventOpenTime } from './db';
 
 const viewports = [
   { width: 1440, height: 900 },
@@ -10,20 +12,20 @@ const viewports = [
 
 for (const viewport of viewports) {
   test(`probability strategy layout fits ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+    await setDefaultEventOpenTime(page);
     await page.setViewportSize(viewport);
 
-    // Development display boot creates the isolated test context's demo event and prizes.
     await page.goto('/display');
     await expect(page.locator('main')).toHaveAttribute('data-state', 'ATTRACT');
     await page.goto('/admin/pacing');
-    await expect(page.getByRole('heading', { name: '逐项配置中奖概率与发放策略' })).toBeVisible();
+    await expect(page.locator('.probability-table')).toBeVisible();
 
-    await page.getByRole('button', { name: '智能模式' }).click();
-    await page.getByLabel('一等奖 发放方式').first().selectOption('EVEN');
-    await expect(page.getByLabel('一等奖 最小中奖间隔')).toHaveCount(0);
-    await page.getByRole('button', { name: '一等奖 配置智能策略' }).first().click();
-    await expect(page.getByRole('region', { name: '一等奖 智能设置' })).toBeVisible();
-    await expect(page.getByLabel(/最小中奖间隔/).first()).toBeVisible();
+    await page.locator('.pacing-mode-card').nth(1).click();
+    await page.locator('.probability-strategy-select').first().selectOption('EVEN');
+    await expect(page.locator('.probability-setting-card').filter({ has: page.locator('input[type="number"]') })).toHaveCount(0);
+    await page.locator('.probability-action-cell button').first().click();
+    await expect(page.locator('.probability-expanded-panel')).toBeVisible();
+    await expect(page.locator('.smart-pacing-panel input[type="number"]').first()).toBeVisible();
     await expect(page.locator('.strategy-advanced-panel')).toHaveCount(0);
 
     const layout = await page.evaluate(() => {
@@ -72,10 +74,9 @@ for (const viewport of viewports) {
     }
 
     if (viewport.width === 1024) {
-      const simpleMode = page.getByRole('button', { name: '简单模式' });
-      await simpleMode.focus();
+      await page.locator('.pacing-mode-card').first().focus();
       await page.keyboard.press('Tab');
-      await expect(page.getByRole('button', { name: '智能模式' })).toBeFocused();
+      await expect(page.locator('.pacing-mode-card').nth(1)).toBeFocused();
     }
 
     await page.screenshot({

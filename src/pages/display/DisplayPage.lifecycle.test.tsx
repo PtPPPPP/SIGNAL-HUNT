@@ -64,7 +64,7 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
   });
 
   it('preserves a committed draw session while its event is paused (still recoverable)', async () => {
-    // Realistic flow: commit while ACTIVE, THEN staff pause the event.
+    // Realistic flow: commit while ACTIVE, THEN an operator pauses the event.
     await seedEvent(db, { ...event, status: 'ACTIVE' });
     await seedPrizes(db, [prize({ id: 'first', inventoryRemaining: 2 })]);
 

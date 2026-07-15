@@ -12,7 +12,7 @@ export const DATABASE_NAME = 'signal-hunt';
  * v1 — initial schema: events, prizes, drawSessions, drawRecords.
  * v2 — additive only, no index changes, no data transformation. Existing v1
  *      records stay valid untouched. Adds optional non-indexed fields:
- *      - DrawRecord.voidedAt / voidReason  (traceable staff void operations)
+ *      - DrawRecord.voidedAt / voidReason  (traceable operator void operations)
  *      - Event.startAt / endAt             (exhibition window)
  * v3 — additive indexes + one new table. No existing field is renamed, removed,
  *      or transformed, so v2 records stay valid untouched. Dexie rebuilds the new

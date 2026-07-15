@@ -34,15 +34,9 @@ const navGroups = [
     ],
   },
   {
-    label: '现场操作',
-    items: [
-      { to: '/staff', label: '工作人员操作', icon: '员' },
-      { to: '/diagnostics', label: '系统诊断', icon: '诊' },
-    ],
-  },
-  {
     label: '系统',
     items: [
+      { to: '/diagnostics', label: '系统诊断', icon: '诊' },
       { to: '/admin/system', label: '系统设置', icon: '设' },
     ],
   },

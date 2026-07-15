@@ -24,6 +24,15 @@ const optionalTimestamp = z
     message: '时间格式无效',
   });
 
+const participationWindowSchema = z
+  .object({
+    startAt: z.string().trim().min(1).refine((value) => !Number.isNaN(Date.parse(value))),
+    endAt: z.string().trim().min(1).refine((value) => !Number.isNaN(Date.parse(value))),
+  })
+  .refine((window) => Date.parse(window.startAt) < Date.parse(window.endAt), {
+    path: ['endAt'],
+  });
+
 export const eventSchema = z
   .object({
     id: z.string().trim().min(1, '活动编号不能为空'),
@@ -35,6 +44,7 @@ export const eventSchema = z
     createdAt: z.string().trim().min(1, '创建时间不能为空'),
     startAt: optionalTimestamp,
     endAt: optionalTimestamp,
+    participationWindows: z.array(participationWindowSchema).optional(),
   })
   .refine((event) => {
     if (event.startAt && event.endAt) {
@@ -79,6 +89,7 @@ const EVENT_FIELDS: ReadonlyArray<keyof Event> = [
   'createdAt',
   'startAt',
   'endAt',
+  'participationWindows',
 ];
 
 function toEventValidationIssues(error: z.ZodError): EventValidationIssues {

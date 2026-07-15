@@ -29,6 +29,7 @@
     "test:watch": "vitest",
     "test:stress": "vitest run src/stress --config vitest.reliability.config.ts",
     "test:perf": "vitest run --config vitest.perf.config.ts",
+    "test:performance": "npm run test:perf",
     "test:e2e": "playwright test",
     "burnin:smoke": "node scripts/burnin.mjs smoke",
     "burnin:short": "node scripts/burnin.mjs short",

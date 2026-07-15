@@ -18,17 +18,18 @@ type SignalCanvasProps = {
 const METRICS_REPORT_INTERVAL_MS = 500;
 /** Smooth FPS over a rolling window of recent frame intervals. */
 const FPS_WINDOW = 30;
+const STATIC_SIGNAL_STORAGE_KEY = 'signal-hunt:staticSignalCanvas';
 
 /**
  * 从 CSS 主题变量读取信号颜色，让 Canvas 的红色高亮与全局品牌 Token 统一，
  * 避免在渲染器里散落硬编码红色。主题在运行时不变，初始化时读取一次即可。
  */
-function readSignalColors(): SignalRenderColors {
+function readSignalColors(target: HTMLElement): SignalRenderColors {
   if (typeof window === 'undefined' || !document.documentElement) {
     return defaultSignalRenderColors;
   }
 
-  const style = window.getComputedStyle(document.documentElement);
+  const style = window.getComputedStyle(target);
   const pick = (name: string, fallback: string): string => {
     const value = style.getPropertyValue(name).trim();
     return value || fallback;
@@ -61,7 +62,7 @@ export function SignalCanvas({ status }: SignalCanvasProps) {
       return undefined;
     }
 
-    const colors = readSignalColors();
+    const colors = readSignalColors(canvas);
     let animationFrameId = 0;
     let disposed = false;
     let lastReportMs = 0;
@@ -74,6 +75,8 @@ export function SignalCanvas({ status }: SignalCanvasProps) {
     let cssWidth = canvas.clientWidth || 1280;
     let cssHeight = canvas.clientHeight || 520;
     let sizeIsDirty = true;
+    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const staticSignal = Boolean(motionQuery?.matches) || localStorage.getItem(STATIC_SIGNAL_STORAGE_KEY) === 'true';
 
     const applyResize = () => {
       sizeIsDirty = true;
@@ -144,7 +147,7 @@ export function SignalCanvas({ status }: SignalCanvasProps) {
         context,
         createSignalFrame({
           status: statusRef.current,
-          timeMs,
+          timeMs: staticSignal ? 0 : timeMs,
           width: cssWidth,
           height: cssHeight,
         }),
@@ -152,6 +155,11 @@ export function SignalCanvas({ status }: SignalCanvasProps) {
       );
 
       report(timeMs, targetWidth, targetHeight, rawDpr, maxDpr);
+
+      if (staticSignal) {
+        reportCanvasMetrics({ rafRunning: false });
+        return;
+      }
 
       animationFrameId = window.requestAnimationFrame(render);
     };

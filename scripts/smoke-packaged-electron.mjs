@@ -24,6 +24,7 @@ let app = await electron.launch({
 
 try {
   const displayWindow = await waitForRoute('/display');
+  await sendControlShortcut('A');
   const adminWindow = await waitForRoute('/admin/dashboard');
   await assertLogoLoaded(displayWindow, '展会大屏');
   await assertLogoLoaded(adminWindow, '后台');
@@ -32,27 +33,25 @@ try {
   await waitForRoute('/admin/system');
   await verifyDisplayWindowModes(adminWindow);
 
-  await sendControlShortcut('S');
-  const staffWindow = await waitForRoute('/staff');
   const controlWindowId = await getControlWindowId();
-  await staffWindow.evaluate(() => {
+  await adminWindow.evaluate(() => {
     globalThis.__signalHuntLifecycleProbe = 'preserved';
   });
 
-  await staffWindow.getByRole('button', { name: /返回展会大屏/ }).click();
+  await adminWindow.getByRole('button', { name: /返回展会大屏/ }).click();
   await waitForDisplayFocus();
 
-  await sendControlShortcut('S');
-  const reopenedStaffWindow = await waitForRoute('/staff');
+  await sendControlShortcut('A');
+  const reopenedAdminWindow = await waitForRoute('/admin/system');
   const reopenedControlWindowId = await getControlWindowId();
-  const lifecycleProbe = await reopenedStaffWindow.evaluate(
+  const lifecycleProbe = await reopenedAdminWindow.evaluate(
     () => globalThis.__signalHuntLifecycleProbe ?? null,
   );
   if (reopenedControlWindowId !== controlWindowId) {
     throw new Error(`Control BrowserWindow changed from ${controlWindowId} to ${reopenedControlWindowId}.`);
   }
   if (lifecycleProbe !== 'preserved') {
-    throw new Error('Control renderer state was lost after returning to the display and reopening staff.');
+    throw new Error('Control renderer state was lost after returning to the display and reopening admin.');
   }
 
   await sendControlShortcut('A');
@@ -75,7 +74,7 @@ try {
   await waitForRoute('/display');
   await waitForDisplayWindowMode('WINDOWED');
 
-  console.log('Packaged Electron smoke passed: display mode switching and restart persistence, preserved control window lifecycle, display, first-run admin, staff shortcut, admin shortcut, logos.');
+  console.log('Packaged Electron smoke passed: display mode switching and restart persistence, preserved control window lifecycle, display shortcut, admin shortcut, logos.');
 } finally {
   await app.close();
   await rm(userDataDirectory, { force: true, recursive: true });

@@ -6,7 +6,6 @@ const desktopApi: SignalHuntDesktopApi = {
   control: {
     focusDisplay: () => ipcRenderer.invoke('desktop:control:focus-display'),
     openAdmin: () => ipcRenderer.invoke('desktop:control:open-admin'),
-    openStaff: () => ipcRenderer.invoke('desktop:control:open-staff'),
   },
   file: {
     exportCsv: (defaultFileName, contents) =>

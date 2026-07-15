@@ -2,7 +2,7 @@
  * Shared canvas performance diagnostics.
  *
  * SignalCanvas reports a small metrics snapshot here each frame (throttled); the
- * /diagnostics page reads it back so现场 staff can see real FPS, CSS size, the
+ * /diagnostics page reads it back so onsite operators can see real FPS, CSS size, the
  * backing buffer size, the effective (capped) DPR and whether the rAF loop is
  * actually running. This is a single-canvas kiosk, so a module-level singleton is
  * sufficient and avoids plumbing props through the React tree.

@@ -13,9 +13,8 @@ const baseInput: DesktopShortcutInput = {
 };
 
 describe('resolveDesktopShortcut', () => {
-  it('maps the admin and staff shortcuts', () => {
+  it('maps the admin shortcut', () => {
     expect(resolveDesktopShortcut(baseInput)).toBe('OPEN_ADMIN');
-    expect(resolveDesktopShortcut({ ...baseInput, key: 's' })).toBe('OPEN_STAFF');
   });
 
   it('ignores incomplete, repeated, and key-up input', () => {

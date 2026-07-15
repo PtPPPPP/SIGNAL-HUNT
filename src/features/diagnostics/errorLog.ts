@@ -97,7 +97,7 @@ export function logStructured(type: LogEntryType, details?: Record<string, unkno
     entries.splice(0, entries.length - MAX_ENTRIES);
   }
 
-  // Mirror to console so现场 staff with devtools can follow live operation.
+  // Mirror to console so onsite operators with devtools can follow live operation.
   const consoleLevel = LEVEL_BY_TYPE[type];
   if (consoleLevel === 'error') {
     console.error(`[SIGNAL-HUNT] ${type}`, details ?? {});

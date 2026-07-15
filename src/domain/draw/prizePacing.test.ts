@@ -84,4 +84,29 @@ describe('prize pacing domain', () => {
     expect(snapshot.status).toBe('BEHIND');
     expect(snapshot.effectiveWeight).toBeGreaterThan(prize.weight);
   });
+
+  it('paces multi-day events by active participation time only', () => {
+    const snapshot = calculatePrizePacing({
+      prize: {
+        ...prize,
+        inventoryTotal: 6,
+        inventoryRemaining: 6,
+        probabilityMode: 'SMART_PACING',
+      },
+      event: {
+        ...event,
+        startAt: '2026-07-15T01:00:00.000Z',
+        endAt: '2026-07-16T09:00:00.000Z',
+        participationWindows: [
+          { startAt: '2026-07-15T01:00:00.000Z', endAt: '2026-07-15T09:00:00.000Z' },
+          { startAt: '2026-07-16T01:00:00.000Z', endAt: '2026-07-16T09:00:00.000Z' },
+        ],
+      },
+      records: [],
+      now: () => '2026-07-15T17:00:00.000Z',
+    });
+
+    expect(snapshot.eventProgress).toBe(0.5);
+    expect(snapshot.expectedWins).toBe(3);
+  });
 });

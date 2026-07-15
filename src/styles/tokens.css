@@ -38,6 +38,43 @@
   --color-signal-peak: var(--color-brand-red);
   --color-cursor: rgba(0, 0, 0, 0.38);
 
+  /* === 大屏红色主题(display only) === */
+  --display-bg-deep: #9f1f18;
+  --display-bg-primary: #c92b20;
+  --display-bg-brand: #d83428;
+  --display-bg-bright: #e34a3d;
+  --display-bg-highlight: #ee6558;
+  --display-accent: #ffe6e2;
+  --display-text-primary: #fff9f7;
+  --display-text-secondary: rgba(255, 249, 247, 0.78);
+  --display-text-muted: rgba(255, 249, 247, 0.58);
+  --display-grid-color: rgba(255, 255, 255, 0.08);
+  --display-wave-color: rgba(255, 238, 235, 0.34);
+  --display-wave-dim-color: rgba(255, 238, 235, 0.11);
+  --display-peak-color: rgba(255, 249, 247, 0.82);
+  --display-cursor-color: rgba(255, 249, 247, 0.22);
+  --display-panel-scrim: rgba(159, 31, 24, 0.14);
+  --display-button-bg: #fff9f7;
+  --display-button-bg-hover: #ffffff;
+  --display-button-bg-active: #f7dfda;
+  --display-button-text: #b72219;
+  --display-button-border: rgba(255, 249, 247, 0.64);
+  --display-button-shadow: rgba(109, 14, 9, 0.2);
+  --display-status-bg: rgba(255, 249, 247, 0.94);
+  --display-status-text: #a92219;
+  --display-status-border: rgba(255, 249, 247, 0.48);
+  --display-surface-card-bg: rgba(255, 250, 248, 0.97);
+  --display-surface-card-bg-elevated: rgba(255, 246, 243, 0.98);
+  --display-surface-card-border: rgba(166, 37, 27, 0.14);
+  --display-surface-card-border-strong: rgba(184, 31, 23, 0.22);
+  --display-surface-card-shadow: rgba(122, 18, 12, 0.22);
+  --display-result-bg: var(--display-surface-card-bg);
+  --display-result-bg-soft: var(--display-surface-card-bg-elevated);
+  --display-result-text: #c92b20;
+  --display-result-text-strong: #b81f17;
+  --display-result-text-secondary: rgba(184, 31, 23, 0.82);
+  --display-result-shadow: var(--display-surface-card-shadow);
+
   /* === 状态色（克制使用）=== */
   --color-success: #2f7d4a;
   --color-warning: #b96b00;

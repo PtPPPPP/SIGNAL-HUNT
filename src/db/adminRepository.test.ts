@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createSignalHuntDatabase, type SignalHuntDatabase } from './database';
-import { getDashboardSummary, listPrizes, savePrize } from './adminRepository';
+import { getDashboardSummary, listPrizes, normalizeLegacyPrizeLabels, savePrize } from './adminRepository';
 import { seedEvent, seedPrizes } from './drawRepository';
 import type { Event, Prize } from '../domain/draw/types';
 
@@ -62,6 +62,37 @@ describe('admin repository', () => {
       enabledPrizeCount: 2,
       remainingInventory: 2,
       drawRecordCount: 0,
+    });
+  });
+
+  it('normalizes legacy non-winning prize labels to thanks participation', async () => {
+    await seedPrizes(db, [
+      { ...prize, id: 'first', name: '一等奖', shortName: '一等奖', level: 1 },
+      { ...prize, id: 'legacy-thanks', name: '参与奖', shortName: '参与奖', level: 4, inventoryTotal: 10, inventoryRemaining: 8 },
+    ]);
+    await db.drawRecords.put({
+      id: 'record-legacy',
+      eventId: event.id,
+      sessionId: 'session-legacy',
+      prizeId: 'legacy-thanks',
+      prizeNameSnapshot: '参与奖',
+      createdAt: '2026-07-15T01:00:00.000Z',
+      committedAt: '2026-07-15T01:00:00.000Z',
+      redeemed: false,
+      status: 'COMMITTED',
+    });
+
+    await expect(normalizeLegacyPrizeLabels(db)).resolves.toBe(true);
+
+    await expect(db.prizes.get('legacy-thanks')).resolves.toMatchObject({
+      name: '谢谢参与',
+      shortName: '谢谢参与',
+      level: 99,
+      inventoryTotal: 10,
+      inventoryRemaining: 8,
+    });
+    await expect(db.drawRecords.get('record-legacy')).resolves.toMatchObject({
+      prizeNameSnapshot: '谢谢参与',
     });
   });
 });

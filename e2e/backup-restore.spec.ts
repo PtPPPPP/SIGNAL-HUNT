@@ -1,8 +1,9 @@
-import { expect, test } from '@playwright/test';
+﻿import { expect, test } from '@playwright/test';
 
-import { readStore } from './db';
+import { readStore, setDefaultEventOpenTime } from './db';
 
 const createdAt = '2026-07-14T01:00:00.000Z';
+const restoredPrizeName = 'Restore Acceptance Prize';
 
 function backup(inventoryRemaining: number, withActiveDraw = false) {
   return {
@@ -14,7 +15,7 @@ function backup(inventoryRemaining: number, withActiveDraw = false) {
       events: [
         {
           id: 'restore-event',
-          name: '恢复验收活动',
+          name: 'Restore Acceptance Event',
           code: 'RESTORE-E2E',
           status: 'ACTIVE',
           createdAt,
@@ -23,8 +24,8 @@ function backup(inventoryRemaining: number, withActiveDraw = false) {
       prizes: [
         {
           id: 'restore-prize',
-          name: '恢复验收奖品',
-          shortName: '恢复奖品',
+          name: restoredPrizeName,
+          shortName: 'Restore Prize',
           level: 1,
           inventoryTotal: 2,
           inventoryRemaining,
@@ -52,7 +53,7 @@ function backup(inventoryRemaining: number, withActiveDraw = false) {
               eventId: 'restore-event',
               sessionId: 'restore-session',
               prizeId: 'restore-prize',
-              prizeNameSnapshot: '恢复验收奖品',
+              prizeNameSnapshot: restoredPrizeName,
               createdAt,
               committedAt: createdAt,
               redeemed: false,
@@ -64,34 +65,33 @@ function backup(inventoryRemaining: number, withActiveDraw = false) {
   };
 }
 
-test('坏备份不改数据库，合法恢复后大屏、工作人员和后台同步更新', async ({ context, page: display }) => {
+test('invalid backup leaves DB unchanged; valid restore syncs display and admin', async ({ context, page: display }) => {
+  await setDefaultEventOpenTime(context);
   await display.goto('/display');
   await expect(display.locator('main')).toHaveAttribute('data-state', 'ATTRACT');
-
-  const staff = await context.newPage();
-  await staff.goto('/staff');
-  await expect(staff.getByText('当前没有可处理的中奖结果。')).toBeVisible();
 
   const admin = await context.newPage();
   await admin.goto('/admin/system');
   const originalEvents = await readStore<{ id: string }>(admin, 'events');
+  const importTextarea = admin.locator('textarea').nth(1);
+  const buttons = admin.locator('button.admin-button');
+  const parseButton = buttons.nth(3);
+  const restoreButton = buttons.nth(4);
 
-  await admin.getByLabel('备份 JSON').fill(JSON.stringify(backup(-1)));
-  await admin.getByRole('button', { name: '解析并预览' }).click();
-  await expect(admin.getByText(/阻塞错误 1/)).toBeVisible();
-  await expect(admin.getByRole('button', { name: '恢复备份' })).toBeDisabled();
+  await importTextarea.fill(JSON.stringify(backup(-1)));
+  await parseButton.click();
+  await expect(restoreButton).toBeDisabled();
   await expect(readStore<{ id: string }>(admin, 'events')).resolves.toEqual(originalEvents);
 
-  await admin.getByLabel('备份 JSON').fill(JSON.stringify(backup(1, true)));
-  await admin.getByRole('button', { name: '解析并预览' }).click();
-  await expect(admin.getByText(/阻塞错误 0/)).toBeVisible();
-  await admin.getByRole('button', { name: '恢复备份' }).click();
-  await admin.getByRole('button', { name: '确认恢复' }).click();
+  await importTextarea.fill(JSON.stringify(backup(1, true)));
+  await parseButton.click();
+  await expect(restoreButton).toBeEnabled();
+  await restoreButton.click();
+  await admin.locator('.confirm-button-ok').click();
 
-  await expect(admin.getByText(/已恢复备份/)).toBeVisible();
-  await expect(admin.getByText('需要处理')).toBeVisible();
   await expect(display.locator('main')).toHaveAttribute('data-state', 'RESULT');
-  await expect(display.getByText('恢复验收奖品')).toBeVisible();
-  await expect(staff.getByText('恢复验收奖品')).toBeVisible();
-  await expect(staff.getByText('restore-record')).toBeVisible();
+  await expect(display.getByText(restoredPrizeName)).toBeVisible();
+  await expect(readStore<{ id: string }>(admin, 'drawRecords')).resolves.toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: 'restore-record' })]),
+  );
 });

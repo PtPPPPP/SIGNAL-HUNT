@@ -46,7 +46,7 @@ describe('AdminPacingPage', () => {
       prize({ id: 'prize-first', name: '一等奖', shortName: '一等奖', level: 1, inventoryTotal: 5, inventoryRemaining: 5, weight: 1 }),
       prize({ id: 'prize-second', name: '二等奖', shortName: '二等奖', level: 2, inventoryTotal: 20, inventoryRemaining: 20, weight: 5 }),
       prize({ id: 'prize-third', name: '三等奖', shortName: '三等奖', level: 3, inventoryTotal: 80, inventoryRemaining: 80, weight: 15 }),
-      prize({ id: 'prize-souvenir', name: '纪念奖', shortName: '纪念奖', level: 4, inventoryTotal: 395, inventoryRemaining: 395, weight: 79 }),
+      prize({ id: 'prize-thanks', name: '谢谢参与', shortName: '谢谢参与', level: 99, inventoryTotal: 395, inventoryRemaining: 395, weight: 79 }),
     ]);
   });
 

@@ -15,6 +15,22 @@ export default defineConfig({
     // the真实 shipped version without hand-syncing.
     __APP_VERSION__: JSON.stringify(packageJson.version),
   },
+  server: {
+    watch: {
+      // Ignore build/packaging output so a running packaged Electron app — which
+      // locks `out/SIGNAL HUNT-*/SIGNAL HUNT.exe` — doesn't crash the dev watcher
+      // with EBUSY. node_modules/.git must be re-listed since this overrides the
+      // default ignored set.
+      ignored: [
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/dist/**',
+        '**/out/**',
+        '**/release/**',
+        '**/test-results/**',
+      ],
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

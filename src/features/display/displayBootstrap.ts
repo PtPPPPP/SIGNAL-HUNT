@@ -1,46 +1,76 @@
+import { normalizeLegacyPrizeLabels } from '../../db/adminRepository';
 import { getConfiguredActiveEvent, seedEvent, seedPrizes } from '../../db/drawRepository';
 import type { SignalHuntDatabase } from '../../db/database';
 import type { Event, Prize } from '../../domain/draw/types';
 
-const DEMO_EVENT: Event = {
-  id: 'event-demo',
-  name: 'SIGNAL HUNT Demo',
-  code: 'SIGNAL-HUNT-DEMO',
+const DEFAULT_EVENT: Event = {
+  id: 'event-default-20260715-16',
+  name: 'SIGNAL HUNT 抽奖活动',
+  code: 'SIGNAL-HUNT-20260715-16',
   status: 'ACTIVE',
-  createdAt: '2026-07-06T00:00:00.000Z',
+  createdAt: '2026-07-14T00:00:00.000Z',
+  startAt: '2026-07-15T01:00:00.000Z',
+  endAt: '2026-07-16T09:00:00.000Z',
+  participationWindows: [
+    {
+      startAt: '2026-07-15T01:00:00.000Z',
+      endAt: '2026-07-15T09:00:00.000Z',
+    },
+    {
+      startAt: '2026-07-16T01:00:00.000Z',
+      endAt: '2026-07-16T09:00:00.000Z',
+    },
+  ],
 };
 
-function createDemoPrizes(): Prize[] {
+export function createDefaultPrizePool(): Prize[] {
   const specs: Array<Omit<Prize, 'id'> & { idPrefix: string }> = [
     {
-      idPrefix: 'demo-first',
+      idPrefix: 'default-first',
       name: '一等奖',
       shortName: '一等奖',
       level: 1,
-      inventoryTotal: 1,
-      inventoryRemaining: 1,
-      weight: 5,
+      inventoryTotal: 6,
+      inventoryRemaining: 6,
+      weight: 2,
       enabled: true,
+      probabilityMode: 'SMART_PACING',
+      pacing: createDefaultPacingConfig(),
     },
     {
-      idPrefix: 'demo-second',
+      idPrefix: 'default-second',
       name: '二等奖',
       shortName: '二等奖',
       level: 2,
-      inventoryTotal: 5,
-      inventoryRemaining: 5,
-      weight: 25,
+      inventoryTotal: 30,
+      inventoryRemaining: 30,
+      weight: 10,
       enabled: true,
+      probabilityMode: 'SMART_PACING',
+      pacing: createDefaultPacingConfig(),
     },
     {
-      idPrefix: 'demo-third',
+      idPrefix: 'default-third',
       name: '三等奖',
       shortName: '三等奖',
       level: 3,
-      inventoryTotal: 20,
-      inventoryRemaining: 20,
-      weight: 70,
+      inventoryTotal: 120,
+      inventoryRemaining: 120,
+      weight: 120,
       enabled: true,
+      probabilityMode: 'SMART_PACING',
+      pacing: createDefaultPacingConfig(),
+    },
+    {
+      idPrefix: 'default-thanks',
+      name: '谢谢参与',
+      shortName: '谢谢参与',
+      level: 99,
+      inventoryTotal: 1344,
+      inventoryRemaining: 1344,
+      weight: 868,
+      enabled: true,
+      probabilityMode: 'FIXED',
     },
   ];
 
@@ -54,17 +84,25 @@ function createDemoPrizes(): Prize[] {
   });
 }
 
+function createDefaultPacingConfig(): NonNullable<Prize['pacing']> {
+  return {
+    minMultiplier: 0.05,
+    maxMultiplier: 8,
+    sensitivity: 0.75,
+    catchUpEnabled: true,
+    catchUpStartBeforeEndMinutes: 60,
+    catchUpMaxMultiplier: 20,
+  };
+}
+
 /**
- * Whether the demo seed may auto-create a demo event + prizes.
+ * Whether the packaged default seed may auto-create the confirmed event + prizes.
  *
- * - `VITE_ENABLE_DEMO_SEED='true'`  → always allowed (use to test a prod build locally).
- * - `VITE_ENABLE_DEMO_SEED='false'` → never allowed, even in dev/test (exercises the
- *   empty-database "no event configured" path).
- * - unset                         → allowed in dev/test, forbidden in production builds.
+ * - `VITE_ENABLE_DEMO_SEED='true'`  -> always allowed.
+ * - `VITE_ENABLE_DEMO_SEED='false'` -> never allowed.
+ * - unset                           -> allowed, including packaged builds.
  *
- * Production kiosks must NEVER silently fabricate demo prizes for a real exhibition,
- * so the production default is off. Operators are expected to create/import the real
- * event via /admin/event and /admin/prizes.
+ * Existing operator data is never overwritten.
  */
 export function isDemoSeedEnabled(): boolean {
   const flag = import.meta.env.VITE_ENABLE_DEMO_SEED;
@@ -77,19 +115,19 @@ export function isDemoSeedEnabled(): boolean {
     return false;
   }
 
-  return import.meta.env.DEV;
+  return true;
 }
 
 /**
- * Ensures the kiosk has an active event with a prize pool to draw from — but ONLY
- * when demo seeding is enabled (see isDemoSeedEnabled). Seeds a demo event + prizes
- * only when no ACTIVE event exists yet, so it never overwrites data an operator has
- * imported through the admin tools. In production this is a no-op.
+ * Ensures the kiosk has an active event with a prize pool to draw from. Seeds the
+ * confirmed default only when no ACTIVE event exists yet.
  */
 export async function ensureDemoSeed(db: SignalHuntDatabase): Promise<void> {
   if (!isDemoSeedEnabled()) {
     return;
   }
+
+  await normalizeLegacyPrizeLabels(db);
 
   const activeEvent = await getConfiguredActiveEvent(db);
 
@@ -97,6 +135,6 @@ export async function ensureDemoSeed(db: SignalHuntDatabase): Promise<void> {
     return;
   }
 
-  await seedEvent(db, DEMO_EVENT);
-  await seedPrizes(db, createDemoPrizes());
+  await seedEvent(db, DEFAULT_EVENT);
+  await seedPrizes(db, createDefaultPrizePool());
 }
