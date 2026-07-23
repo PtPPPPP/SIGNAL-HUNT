@@ -337,7 +337,7 @@ export function DisplayPage({ db = signalHuntDatabase, now = systemNow }: Displa
 
     const subscription = liveQuery(() => readDisplayDatabaseSnapshot(db, eventIdRef.current, now())).subscribe({
       next: (snapshot) => {
-        if (!mountedRef.current || commitInFlightRef.current) return;
+        if (!mountedRef.current || shouldDeferSnapshot(stateRef.current, commitInFlightRef.current)) return;
         if (syncErrorRef.current) {
           syncErrorRef.current = false;
           setSyncError(false);
@@ -376,9 +376,53 @@ export function DisplayPage({ db = signalHuntDatabase, now = systemNow }: Displa
     if (!databaseReady) return;
 
     return subscribeAppChanges(() => {
-      setSyncRetryNonce((current) => current + 1);
+      // IndexedDB liveQuery is reliable inside one renderer, but a staff action
+      // can originate in another Electron renderer. Read the authoritative
+      // snapshot on the explicit cross-window signal instead of waiting for the
+      // local liveQuery observer to notice that external write.
+      void readDisplayDatabaseSnapshot(db, eventIdRef.current, now())
+        .then((snapshot) => {
+          if (!mountedRef.current || shouldDeferSnapshot(stateRef.current, commitInFlightRef.current)) return;
+          reconcileDisplaySnapshot(snapshot, {
+            currentState: stateRef.current,
+            eventIdRef,
+            initialAdminRequestedRef,
+            resetInFlightRef,
+            scheduleReset,
+            setBlockedMessage,
+            setDisplayState,
+            setEventBoundaryAt,
+            setRevealedPrizeName,
+            setResultActionError,
+          });
+        })
+        .catch(() => setSyncRetryNonce((current) => current + 1));
     });
-  }, [databaseReady]);
+  }, [databaseReady, db, now, scheduleReset]);
+
+  useEffect(() => {
+    if (!databaseReady || !window.signalHuntDesktop) return;
+
+    return window.signalHuntDesktop.control.onDisplaySync(() => {
+      void readDisplayDatabaseSnapshot(db, eventIdRef.current, now())
+        .then((snapshot) => {
+          if (!mountedRef.current || shouldDeferSnapshot(stateRef.current, commitInFlightRef.current)) return;
+          reconcileDisplaySnapshot(snapshot, {
+            currentState: stateRef.current,
+            eventIdRef,
+            initialAdminRequestedRef,
+            resetInFlightRef,
+            scheduleReset,
+            setBlockedMessage,
+            setDisplayState,
+            setEventBoundaryAt,
+            setRevealedPrizeName,
+            setResultActionError,
+          });
+        })
+        .catch(() => setSyncRetryNonce((current) => current + 1));
+    });
+  }, [databaseReady, db, now, scheduleReset]);
 
   useEffect(() => {
     if (!eventBoundaryAt) return;
@@ -611,6 +655,12 @@ function reconcileDisplaySnapshot(snapshot: DisplayDatabaseSnapshot, handlers: D
     setDisplayState((current) => applyEvent(current, { type: 'BOOT_READY' }));
   }
   requestInitialAdmin(snapshot.eventCount, initialAdminRequestedRef);
+}
+
+function shouldDeferSnapshot(state: DisplayState, commitInFlight: boolean): boolean {
+  // Keep the draw animation stable, but once RESULT is visible a staff action
+  // is authoritative and must be applied immediately.
+  return commitInFlight && state.status !== 'RESULT';
 }
 
 function toParticipationBlockedMessage(code: EventParticipationErrorCode, event: Event): NonNullable<BlockedMessage> {

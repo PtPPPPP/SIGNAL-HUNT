@@ -1,4 +1,4 @@
-export type DesktopShortcutAction = 'OPEN_ADMIN';
+export type DesktopShortcutAction = 'OPEN_ADMIN' | 'OPEN_STAFF';
 
 export type DesktopShortcutInput = {
   alt: boolean;
@@ -24,5 +24,6 @@ export function resolveDesktopShortcut(input: DesktopShortcutInput): DesktopShor
 
   const key = input.key.toUpperCase();
   if (key === 'A') return 'OPEN_ADMIN';
+  if (key === 'S') return 'OPEN_STAFF';
   return undefined;
 }

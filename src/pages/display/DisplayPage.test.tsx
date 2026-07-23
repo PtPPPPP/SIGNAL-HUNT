@@ -182,7 +182,7 @@ describe('DisplayPage draw integration', () => {
       await new Promise<void>((resolve) => window.setTimeout(resolve, RESETTING_HOLD_MS));
     });
     await expect(db.drawSessions.count()).resolves.toBe(0);
-    expect(screen.getByRole('button', { name: /点亮好运/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /点亮好运/ })).toBeInTheDocument();
   }, 15000);
 
   it('does not exit RESULT when the result area is tapped repeatedly', async () => {

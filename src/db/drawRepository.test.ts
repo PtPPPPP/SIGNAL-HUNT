@@ -6,6 +6,7 @@ import { createSignalHuntDatabase, type SignalHuntDatabase } from './database';
 import {
   clearActiveDrawSession,
   commitPersistentDraw,
+  endActiveDrawDisplay,
   markDrawRevealed,
   recoverCommittedDraw,
   redeemDrawRecord,
@@ -190,6 +191,29 @@ describe('draw persistence repository', () => {
 
     await expect(db.prizes.get('first')).resolves.toMatchObject({ inventoryRemaining: 0 });
     await expect(db.drawRecords.toArray()).resolves.toHaveLength(2);
+  });
+
+  it('ends display without changing the final draw record state', async () => {
+    const committed = await commitFixture(db, 'end-display');
+    await redeemDrawRecord(db, committed.record.id, () => '2026-07-06T01:02:00.000Z');
+
+    await expect(endActiveDrawDisplay(db, event.id, committed.record.id)).resolves.toEqual({ status: 'ENDED' });
+    await expect(db.drawSessions.get(committed.session.id)).resolves.toBeUndefined();
+    await expect(db.drawRecords.get(committed.record.id)).resolves.toMatchObject({
+      status: 'REDEEMED',
+      redeemed: true,
+      redeemedAt: '2026-07-06T01:02:00.000Z',
+    });
+  });
+
+  it('makes repeated display end idempotent and rejects a mismatched record', async () => {
+    const committed = await commitFixture(db, 'end-idempotent');
+
+    await expect(endActiveDrawDisplay(db, event.id, 'other-record')).rejects.toMatchObject({
+      code: 'DRAW_RECORD_MISMATCH',
+    });
+    await expect(endActiveDrawDisplay(db, event.id, committed.record.id)).resolves.toEqual({ status: 'ENDED' });
+    await expect(endActiveDrawDisplay(db, event.id, committed.record.id)).resolves.toEqual({ status: 'ALREADY_ENDED' });
   });
 
   it('redeems an active draw record without ending the display session', async () => {

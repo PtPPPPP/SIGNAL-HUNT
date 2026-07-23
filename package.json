@@ -1,6 +1,6 @@
 {
   "name": "signal-hunt",
-  "version": "0.9.0-beta",
+  "version": "0.9.0-rc1",
   "description": "Offline Windows trade-show touchscreen lottery app for Quantum Design.",
   "author": "Quantum Design",
   "private": true,
@@ -22,6 +22,7 @@
     "electron:build": "npm run electron:make",
     "electron:verify": "node scripts/verify-electron-artifacts.mjs",
     "electron:smoke": "node scripts/smoke-packaged-electron.mjs",
+    "electron:checksums": "node scripts/write-release-checksums.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
@@ -37,7 +38,7 @@
     "preflight": "node scripts/preflight.mjs",
     "verify:quick": "npm run lint && npm run typecheck && npm run test && npm run build",
     "verify:release": "npm run lint && npm run typecheck && npm run test && npm run test:stress && npm run build",
-    "verify:desktop": "npm run lint && npm run typecheck && npm run test:electron && npm run electron:build",
+    "verify:desktop": "npm run lint && npm run typecheck && npm run test:electron && npm run electron:build && npm run electron:smoke && npm run electron:checksums",
     "verify:onsite": "npm run verify:release && npm run burnin:short && npm run preflight"
   },
   "dependencies": {

@@ -48,6 +48,10 @@ export type VoidDrawResult =
   | { status: 'VOIDED'; record: DrawRecord }
   | { status: 'ALREADY_VOIDED'; record: DrawRecord };
 
+export type EndDrawDisplayResult =
+  | { status: 'ENDED' }
+  | { status: 'ALREADY_ENDED' };
+
 export type VoidActiveDrawInput = {
   eventId: string;
   recordId?: string;
@@ -288,6 +292,32 @@ export async function clearActiveDrawSession(db: SignalHuntDatabase, eventId: st
       .toArray();
 
     await Promise.all(activeSessions.map((session: DrawSession) => db.drawSessions.delete(session.id)));
+  });
+}
+
+/**
+ * Ends only the active display session. It deliberately does not change the
+ * draw record, so redemption and voiding remain separate operator decisions.
+ */
+export async function endActiveDrawDisplay(
+  db: SignalHuntDatabase,
+  eventId: string,
+  recordId: string,
+): Promise<EndDrawDisplayResult> {
+  return db.transaction('rw', db.drawSessions, async () => {
+    const session = await db.drawSessions
+      .where('[eventId+status]')
+      .equals([eventId, 'COMMITTED'])
+      .first();
+
+    if (!session) return { status: 'ALREADY_ENDED' };
+
+    if (session.committedRecordId !== recordId) {
+      throw new DrawRepositoryError('DRAW_RECORD_MISMATCH', 'The requested draw is no longer the active draw.');
+    }
+
+    await db.drawSessions.delete(session.id);
+    return { status: 'ENDED' };
   });
 }
 

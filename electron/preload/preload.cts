@@ -6,6 +6,13 @@ const desktopApi: SignalHuntDesktopApi = {
   control: {
     focusDisplay: () => ipcRenderer.invoke('desktop:control:focus-display'),
     openAdmin: () => ipcRenderer.invoke('desktop:control:open-admin'),
+    openStaff: () => ipcRenderer.invoke('desktop:control:open-staff'),
+    requestDisplaySync: () => ipcRenderer.invoke('desktop:control:request-display-sync'),
+    onDisplaySync: (listener) => {
+      const callback = () => listener();
+      ipcRenderer.on('desktop:control:display-sync', callback);
+      return () => ipcRenderer.removeListener('desktop:control:display-sync', callback);
+    },
   },
   file: {
     exportCsv: (defaultFileName, contents) =>

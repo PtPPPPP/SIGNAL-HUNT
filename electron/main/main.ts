@@ -24,6 +24,12 @@ let displayWindowModeStore: DisplayWindowModeStore | null = null;
 const controlHandlers: ControlWindowHandlers = {
   focusDisplay: () => focusDisplayWindow(),
   openAdmin: () => showControlWindow('/admin/dashboard'),
+  openStaff: () => showControlWindow('/staff'),
+  requestDisplaySync: () => {
+    if (displayWindow && !displayWindow.isDestroyed()) {
+      displayWindow.webContents.send('desktop:control:display-sync');
+    }
+  },
 };
 
 const systemHandlers: SystemIpcHandlers = {
@@ -132,7 +138,7 @@ function setDisplayWindowMode(mode: DisplayWindowMode): DisplayWindowMode {
   }
 }
 
-async function showControlWindow(route: '/admin/dashboard'): Promise<void> {
+async function showControlWindow(route: '/admin/dashboard' | '/staff'): Promise<void> {
   try {
     if (controlWindow && !controlWindow.isDestroyed()) {
       await loadControlRouteIfNeeded(controlWindow, route);

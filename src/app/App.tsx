@@ -28,6 +28,7 @@ const AdminShell = lazy(() => import('../pages/admin/AdminShell').then((module) 
 const AdminSystemPage = lazy(() =>
   import('../pages/admin/AdminSystemPage').then((module) => ({ default: module.AdminSystemPage })),
 );
+const StaffPage = lazy(() => import('../pages/staff/StaffPage').then((module) => ({ default: module.StaffPage })));
 
 export function App() {
   const Router = isDesktopRuntime() ? HashRouter : BrowserRouter;
@@ -46,6 +47,7 @@ export function App() {
           <Route path="/admin/participants" element={<AdminShell title="参与者" />} />
           <Route path="/admin/records" element={<AdminRecordsPage />} />
           <Route path="/admin/system" element={<AdminSystemPage />} />
+          <Route path="/staff" element={<StaffPage />} />
           <Route path="/diagnostics" element={<AdminDiagnosticsPage />} />
         </Routes>
       </Suspense>

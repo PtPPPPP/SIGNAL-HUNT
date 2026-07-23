@@ -17,6 +17,10 @@ describe('resolveDesktopShortcut', () => {
     expect(resolveDesktopShortcut(baseInput)).toBe('OPEN_ADMIN');
   });
 
+  it('maps the staff shortcut', () => {
+    expect(resolveDesktopShortcut({ ...baseInput, key: 'S' })).toBe('OPEN_STAFF');
+  });
+
   it('ignores incomplete, repeated, and key-up input', () => {
     expect(resolveDesktopShortcut({ ...baseInput, shift: false })).toBeUndefined();
     expect(resolveDesktopShortcut({ ...baseInput, isAutoRepeat: true })).toBeUndefined();

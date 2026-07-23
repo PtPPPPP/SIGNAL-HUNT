@@ -33,6 +33,22 @@ try {
   await waitForRoute('/admin/system');
   await verifyDisplayWindowModes(adminWindow);
 
+  await seedStaffFlowData(adminWindow);
+  await displayWindow.reload();
+  await waitForDisplayState('ATTRACT');
+  await displayWindow.locator('.primary-touch-target').click();
+  await waitForDisplayState('RESULT');
+
+  await sendControlShortcut('S');
+  const staffWindow = await waitForRoute('/staff');
+  staffWindow.on('dialog', (dialog) => void dialog.accept());
+  await staffWindow.getByRole('button', { name: '确认兑奖' }).click();
+  await staffWindow.getByText('已确认兑奖。').waitFor();
+  await staffWindow.getByRole('button', { name: '结束当前展示' }).click();
+  await staffWindow.getByText('已结束当前展示，大屏已返回待机。').waitFor();
+  await waitForDisplayState('ATTRACT');
+  await assertStaffFlowPersisted(displayWindow);
+
   const controlWindowId = await getControlWindowId();
   await adminWindow.evaluate(() => {
     globalThis.__signalHuntLifecycleProbe = 'preserved';
@@ -41,8 +57,8 @@ try {
   await adminWindow.getByRole('button', { name: /返回展会大屏/ }).click();
   await waitForDisplayFocus();
 
-  await sendControlShortcut('A');
-  const reopenedAdminWindow = await waitForRoute('/admin/system');
+  await sendControlShortcut('S');
+  const reopenedAdminWindow = await waitForRoute('/staff');
   const reopenedControlWindowId = await getControlWindowId();
   const lifecycleProbe = await reopenedAdminWindow.evaluate(
     () => globalThis.__signalHuntLifecycleProbe ?? null,
@@ -51,7 +67,7 @@ try {
     throw new Error(`Control BrowserWindow changed from ${controlWindowId} to ${reopenedControlWindowId}.`);
   }
   if (lifecycleProbe !== 'preserved') {
-    throw new Error('Control renderer state was lost after returning to the display and reopening admin.');
+    throw new Error('Control renderer state was lost after returning to the display and reopening staff.');
   }
 
   await sendControlShortcut('A');
@@ -134,6 +150,67 @@ async function waitForDisplayFocus() {
   }
 
   throw new Error('Timed out waiting for the display window to be focused and the control window to be hidden.');
+}
+
+async function waitForDisplayState(expectedState) {
+  const deadline = Date.now() + 15_000;
+
+  while (Date.now() < deadline) {
+    const display = app.windows().find((window) => new URL(window.url()).hash === '#/display');
+    if (display && (await display.locator('main').getAttribute('data-state')) === expectedState) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`Timed out waiting for display state ${expectedState}.`);
+}
+
+async function seedStaffFlowData(window) {
+  await window.evaluate(async () => {
+    await new Promise((resolve, reject) => {
+      const request = globalThis.indexedDB.open('signal-hunt');
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const now = new Date().toISOString();
+        const transaction = db.transaction(['events', 'prizes'], 'readwrite');
+        transaction.objectStore('events').put({
+          id: 'smoke-event', name: 'Electron Smoke Event', code: 'ELECTRON-SMOKE', status: 'ACTIVE', createdAt: now,
+        });
+        transaction.objectStore('prizes').put({
+          id: 'smoke-prize', name: 'Electron Smoke Prize', shortName: 'Smoke Prize', level: 1,
+          inventoryTotal: 1, inventoryRemaining: 1, weight: 1, enabled: true,
+        });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      };
+    });
+  });
+}
+
+async function assertStaffFlowPersisted(displayWindow) {
+  const state = await displayWindow.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = globalThis.indexedDB.open('signal-hunt');
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+    const transaction = db.transaction(['drawRecords', 'drawSessions'], 'readonly');
+    const recordRequest = transaction.objectStore('drawRecords').getAll();
+    const sessionRequest = transaction.objectStore('drawSessions').getAll();
+    return await new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve({ records: recordRequest.result, sessions: sessionRequest.result });
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  });
+
+  if (state.records.length !== 1 || state.records[0].status !== 'REDEEMED' || !state.records[0].redeemed) {
+    throw new Error(`Staff redemption did not persist the expected terminal record: ${JSON.stringify(state.records)}.`);
+  }
+  if (state.sessions.length !== 0) {
+    throw new Error(`Staff display end left active draw sessions: ${JSON.stringify(state.sessions)}.`);
+  }
 }
 
 async function verifyDisplayWindowModes(adminWindow) {
