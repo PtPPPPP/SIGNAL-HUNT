@@ -204,6 +204,25 @@ button {
   text-shadow: 0 3px 18px rgba(58, 6, 4, 0.36);
 }
 
+@media (max-width: 1366px), (max-height: 800px) {
+  .display-screen {
+    padding: clamp(var(--space-4), 3vw, var(--space-8));
+  }
+
+  .display-panel {
+    width: min(1200px, 100%);
+    padding: clamp(var(--space-4), 3vw, var(--space-8));
+  }
+
+  .display-panel h1 {
+    font-size: clamp(2.75rem, 5.6vw, 5rem);
+  }
+
+  .primary-touch-target {
+    margin-top: clamp(var(--space-6), 5vh, var(--space-12));
+  }
+}
+
 .display-copy {
   margin: var(--space-6) 0 0;
   color: var(--display-text-secondary);
@@ -833,7 +852,7 @@ button {
 
 .return-display-button {
   width: fit-content;
-  min-height: 2.75rem;
+  min-height: var(--control-height);
   padding: 0.65rem 1rem;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
@@ -1091,7 +1110,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.5rem;
+  min-height: var(--control-height);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-4);
   font-size: 0.88rem;
@@ -1159,6 +1178,12 @@ button {
   padding: var(--space-3);
   color: var(--color-text-primary);
   background: var(--color-bg-primary);
+}
+
+.admin-form select,
+.admin-filter-row select,
+.number-input-wrap input {
+  min-height: var(--control-height);
 }
 
 .admin-form textarea {
@@ -1348,7 +1373,7 @@ button {
   display: grid;
   min-height: 100vh;
   align-content: start;
-  gap: var(--space-4);
+  gap: var(--space-6);
   padding: clamp(1rem, 3vw, 3rem);
   background: var(--color-bg-primary);
 }
@@ -1364,6 +1389,8 @@ button {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .staff-header p,
@@ -1387,7 +1414,8 @@ button {
   padding: var(--space-5);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
+  background: var(--color-surface);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.04);
 }
 
 .staff-alert--error { color: var(--color-danger); }
@@ -1411,24 +1439,56 @@ button {
 
 .staff-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(9rem, 0.9fr) minmax(13rem, 1.35fr) minmax(9rem, 0.9fr) minmax(12rem, 1.15fr);
   gap: var(--space-3);
   align-items: end;
 }
 
 .staff-actions button,
 .staff-return {
-  min-height: 3rem;
-  border: 0;
+  min-height: var(--touch-control-height);
+  border: 1px solid var(--color-brand-red);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-3);
   color: white;
   font-weight: 800;
-  background: var(--color-brand);
+  background: var(--color-brand-red);
 }
 
-.staff-button--danger { background: var(--color-danger) !important; }
+.staff-void-reason input {
+  min-width: 0;
+  min-height: var(--touch-control-height);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  background: var(--color-bg-primary);
+}
+
+.staff-button--secondary {
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+}
+
+.staff-button--danger {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
+}
+
+.staff-actions button:focus-visible,
+.staff-return:focus-visible,
+.staff-void-reason input:focus-visible {
+  outline: 3px solid var(--color-brand-muted);
+  outline-offset: 2px;
+}
+
 .staff-actions button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+@media (max-width: 1180px) {
+  .staff-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 
 @media (max-width: 760px) {
   .staff-header { align-items: flex-start; flex-wrap: wrap; }

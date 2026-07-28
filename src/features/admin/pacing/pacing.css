@@ -47,7 +47,7 @@
 .strategy-form-field input {
   width: 100%;
   min-width: 0;
-  min-height: 2.75rem;
+  min-height: var(--control-height);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: #fff;
@@ -213,7 +213,7 @@
 .probability-inline-number input {
   width: 100%;
   min-width: 0;
-  height: 2.25rem;
+  height: var(--control-height);
   border: 0;
   outline: 0;
   padding: 0 0 0 var(--space-2);
@@ -234,7 +234,7 @@
 .probability-strategy-select {
   width: 100%;
   min-width: 8.75rem;
-  height: 2.35rem;
+  min-height: var(--control-height);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: #fff;
@@ -250,7 +250,7 @@
 
 .probability-action-cell .admin-button {
   width: 100%;
-  min-height: 2.35rem;
+  min-height: var(--control-height);
   padding: 0 var(--space-3);
   white-space: nowrap;
 }
@@ -444,7 +444,7 @@
 
 .strategy-compact-field > input {
   width: 8rem;
-  height: 2.35rem;
+  min-height: var(--control-height);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-3);
@@ -459,7 +459,7 @@
 
 .strategy-compact-number input {
   width: 6.5rem;
-  height: 2.35rem;
+  min-height: var(--control-height);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-3);

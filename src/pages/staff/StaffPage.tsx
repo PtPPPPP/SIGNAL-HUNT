@@ -164,7 +164,12 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
           </dl>
 
           <div className="staff-actions">
-            <button type="button" disabled={!canOperate || currentRecord.status === 'VOIDED'} onClick={redeem}>
+            <button
+              className="staff-button--primary"
+              type="button"
+              disabled={!canOperate || currentRecord.status === 'VOIDED'}
+              onClick={redeem}
+            >
               {action === 'REDEEM' ? '正在确认兑奖…' : '确认兑奖'}
             </button>
             <label className="staff-void-reason">
@@ -184,7 +189,7 @@ export function StaffPage({ db = signalHuntDatabase }: StaffPageProps) {
             >
               {action === 'VOID' ? '正在作废…' : '作废记录'}
             </button>
-            <button type="button" disabled={!canOperate} onClick={endDisplay}>
+            <button className="staff-button--secondary" type="button" disabled={!canOperate} onClick={endDisplay}>
               {action === 'END' ? '正在结束展示…' : '结束当前展示'}
             </button>
           </div>
