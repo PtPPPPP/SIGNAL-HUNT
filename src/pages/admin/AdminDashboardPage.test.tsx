@@ -64,6 +64,10 @@ describe('AdminDashboardPage', () => {
 
     expect(await screen.findByText('剩余库存')).toBeInTheDocument();
     expect(await screen.findByText('9')).toBeInTheDocument();
+    expect(screen.getByText('待兑奖数量')).toBeInTheDocument();
+    expect(screen.getByText('已兑奖数量')).toBeInTheDocument();
+    expect(screen.getByText('作废数量')).toBeInTheDocument();
+    expect(screen.getByText('系统告警')).toBeInTheDocument();
     expect(await screen.findByText('2 / 5 剩余')).toBeInTheDocument();
     expect(await screen.findByText('7 / 20 剩余')).toBeInTheDocument();
   });

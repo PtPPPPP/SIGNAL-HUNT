@@ -1,57 +1,44 @@
-import type { ReactNode } from 'react';
+import './ui.css';
 
-export type BadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger';
+import { Button, type ButtonProps } from './Button';
 
-type StatusBadgeProps = {
-  children: ReactNode;
-  tone?: BadgeTone;
-};
+export { Button, IconButton } from './Button';
+export type { ButtonProps, ButtonVariant } from './Button';
+export { Dialog } from './Dialog';
+export { Field, Input, NumberInput, Select, Switch } from './FormControls';
+export {
+  DangerZone,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Feedback,
+  LoadingState,
+  MetricCard,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+  StickyActionBar,
+} from './Surfaces';
+export type { BadgeTone, FeedbackTone } from './Surfaces';
 
-type AdminButtonProps = {
-  children: ReactNode;
-  type?: 'button' | 'submit';
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+type AdminButtonProps = ButtonProps & {
   ariaControls?: string;
   ariaExpanded?: boolean;
   ariaLabel?: string;
-  disabled?: boolean;
-  onClick?: () => void;
 };
 
-export function StatusBadge({ children, tone = 'neutral' }: StatusBadgeProps) {
-  return <span className={`status-badge status-badge--${tone}`}>{children}</span>;
-}
-
 export function AdminButton({
-  children,
-  type = 'button',
-  variant = 'primary',
   ariaControls,
   ariaExpanded,
   ariaLabel,
-  disabled,
-  onClick,
+  ...props
 }: AdminButtonProps) {
   return (
-    <button
-      className={`admin-button admin-button--${variant}`}
-      type={type}
+    <Button
+      {...props}
       aria-controls={ariaControls}
       aria-expanded={ariaExpanded}
       aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function EmptyState({ title, action }: { title: string; action?: ReactNode }) {
-  return (
-    <div className="admin-empty">
-      <p>{title}</p>
-      {action}
-    </div>
+    />
   );
 }

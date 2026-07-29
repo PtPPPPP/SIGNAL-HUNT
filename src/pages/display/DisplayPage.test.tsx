@@ -109,6 +109,34 @@ describe('DisplayPage draw integration', () => {
     expect(await db.drawRecords.count()).toBe(1);
   });
 
+  it('presents the thanks prize as a neutral no-win observation', async () => {
+    await seedEvent(db, event);
+    await seedPrizes(db, [
+      prize({
+        id: 'thanks',
+        name: '谢谢参与',
+        shortName: '谢谢参与',
+        level: 99,
+        inventoryRemaining: 2,
+      }),
+    ]);
+
+    await commitPersistentDraw(db, {
+      eventId: event.id,
+      now: () => '2026-07-06T01:00:00.000Z',
+      random: () => 0,
+      createId: (prefix) => `${prefix}-thanks`,
+    });
+
+    render(<DisplayPage db={db} />);
+
+    expect(await screen.findByRole('heading', { name: '本次观测已经完成' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '未中奖结果' })).toHaveClass('display-result--no-win');
+    expect(screen.getByText('未发现有效结果')).toBeInTheDocument();
+    expect(screen.getByText('感谢参与')).toBeInTheDocument();
+    expect(screen.queryByText(/恭喜/)).not.toBeInTheDocument();
+  });
+
   it('enters ERROR when no active prize is available', async () => {
     await seedEvent(db, event);
     await seedPrizes(db, [prize({ id: 'empty', inventoryRemaining: 0 })]);
@@ -169,16 +197,20 @@ describe('DisplayPage draw integration', () => {
     // Keep the asynchronous repository completion inside act. Dexie uses real
     // IndexedDB scheduling, so only the business completion is controlled here.
     const pendingClear = createDeferred<void>();
+    const clearFinished = createDeferred<void>();
     const originalClearActiveDrawSession = drawRepository.clearActiveDrawSession;
     vi.spyOn(drawRepository, 'clearActiveDrawSession').mockImplementationOnce(async (...args) => {
       await pendingClear.promise;
-      await originalClearActiveDrawSession(...args);
+      try {
+        await originalClearActiveDrawSession(...args);
+      } finally {
+        clearFinished.resolve();
+      }
     });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /确认并返回/ }));
       pendingClear.resolve();
-      await pendingClear.promise;
-      await Promise.resolve();
+      await clearFinished.promise;
       await new Promise<void>((resolve) => window.setTimeout(resolve, RESETTING_HOLD_MS));
     });
     await expect(db.drawSessions.count()).resolves.toBe(0);

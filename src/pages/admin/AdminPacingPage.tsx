@@ -1,4 +1,11 @@
-import { StatusBadge } from '../../components/ui/AdminUI';
+import {
+  Button,
+  ErrorState,
+  LoadingState,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from '../../components/ui/AdminUI';
 import { signalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
 import { AutoBalanceDialog } from '../../features/admin/pacing/components/AutoBalanceDialog';
 import { EventEstimatePanel } from '../../features/admin/pacing/components/EventEstimatePanel';
@@ -20,20 +27,31 @@ export function AdminPacingPage({ db = signalHuntDatabase }: AdminPacingPageProp
 
   return (
     <AdminLayout title="中奖概率与发放策略" db={db} hasUnsavedChanges={pacing.hasUnsavedChanges}>
-      <section className="admin-panel probability-hero">
-        <div className="admin-panel-header">
-          <div>
-            <p>概率配置</p>
-            <h2>让运营人员直接配置概率和发放节奏</h2>
-          </div>
+      <PageShell>
+      {pacing.isLoading ? (
+        <LoadingState title="正在读取发放策略" />
+      ) : pacing.loadError ? (
+        <ErrorState
+          title="发放策略读取失败"
+          description={pacing.loadError}
+          action={<Button onClick={() => void pacing.refresh()}>重新加载</Button>}
+        />
+      ) : (
+      <>
+      <SectionCard
+        className="probability-hero"
+        title="中奖概率与发放节奏"
+        description="默认展示业务语言；高级算法参数只在高级模式中出现。"
+        actions={
           <StatusBadge tone={pacing.hasUnsavedChanges ? 'warning' : 'success'}>
             {pacing.hasUnsavedChanges ? '有未保存修改' : '已同步'}
           </StatusBadge>
-        </div>
-        <p className="admin-helper">
-          默认只展示业务语言：中奖概率、库存、预计中奖人数和发放方式。高级算法参数只在高级模式中出现。
+        }
+      >
+        <p className="admin-section-note">
+          概率和保存语义保持不变，所有自动平衡结果仍需人工确认后应用。
         </p>
-      </section>
+      </SectionCard>
 
       <EventEstimatePanel
         activeEvent={pacing.activeEvent}
@@ -82,6 +100,9 @@ export function AdminPacingPage({ db = signalHuntDatabase }: AdminPacingPageProp
         onCancel={() => pacing.setPreview(undefined)}
         onConfirm={pacing.applyPreview}
       />
+      </>
+      )}
+      </PageShell>
     </AdminLayout>
   );
 }

@@ -40,41 +40,55 @@
   --color-signal-peak: var(--color-brand-red);
   --color-cursor: rgba(0, 0, 0, 0.38);
 
-  /* === 大屏红色主题(display only) === */
-  --display-bg-deep: #9f1f18;
-  --display-bg-primary: #c92b20;
-  --display-bg-brand: #d83428;
-  --display-bg-bright: #e34a3d;
-  --display-bg-highlight: #ee6558;
-  --display-accent: #ffe6e2;
-  --display-text-primary: #fff9f7;
-  --display-text-secondary: rgba(255, 249, 247, 0.78);
-  --display-text-muted: rgba(255, 249, 247, 0.58);
-  --display-grid-color: rgba(255, 255, 255, 0.08);
-  --display-wave-color: rgba(255, 238, 235, 0.34);
-  --display-wave-dim-color: rgba(255, 238, 235, 0.11);
-  --display-peak-color: rgba(255, 249, 247, 0.82);
-  --display-cursor-color: rgba(255, 249, 247, 0.22);
-  --display-panel-scrim: rgba(159, 31, 24, 0.14);
-  --display-button-bg: #fff9f7;
-  --display-button-bg-hover: #ffffff;
-  --display-button-bg-active: #f7dfda;
-  --display-button-text: #b72219;
-  --display-button-border: rgba(255, 249, 247, 0.64);
-  --display-button-shadow: rgba(109, 14, 9, 0.2);
-  --display-status-bg: rgba(255, 249, 247, 0.94);
-  --display-status-text: #a92219;
-  --display-status-border: rgba(255, 249, 247, 0.48);
-  --display-surface-card-bg: rgba(255, 250, 248, 0.97);
-  --display-surface-card-bg-elevated: rgba(255, 246, 243, 0.98);
-  --display-surface-card-border: rgba(166, 37, 27, 0.14);
-  --display-surface-card-border-strong: rgba(184, 31, 23, 0.22);
-  --display-surface-card-shadow: rgba(122, 18, 12, 0.22);
+  /* === 大屏红白精密实验室主题(display only) === */
+  --display-bg: #faf8f7;
+  --display-surface: #ffffff;
+  --display-surface-muted: #f3efed;
+  --display-text-primary: #241f1f;
+  --display-text-secondary: #625a59;
+  --display-text-muted: #8b817f;
+  --display-border: rgba(94, 58, 55, 0.14);
+  --display-grid: rgba(118, 74, 70, 0.075);
+  --display-primary: #c83232;
+  --display-primary-soft: rgba(200, 50, 50, 0.1);
+  --display-primary-line: rgba(200, 50, 50, 0.42);
+  --display-brand-red: #c83232;
+  --display-brand-red-soft: rgba(200, 50, 50, 0.1);
+  --display-success: #237a59;
+  --display-warning: #9a6b16;
+  --display-error: #b7393f;
+
+  --display-bg-deep: #f1ecea;
+  --display-bg-primary: var(--display-bg);
+  --display-bg-brand: var(--display-brand-red);
+  --display-bg-bright: #fffdfc;
+  --display-bg-highlight: var(--display-brand-red);
+  --display-accent: var(--display-primary);
+  --display-grid-color: var(--display-grid);
+  --display-wave-color: rgba(176, 56, 55, 0.4);
+  --display-wave-dim-color: rgba(105, 87, 85, 0.12);
+  --display-peak-color: rgba(200, 50, 50, 0.88);
+  --display-cursor-color: rgba(200, 50, 50, 0.22);
+  --display-panel-scrim: rgba(255, 255, 255, 0.5);
+  --display-button-bg: var(--display-brand-red);
+  --display-button-bg-hover: #b92b2b;
+  --display-button-bg-active: #a32727;
+  --display-button-text: #ffffff;
+  --display-button-border: var(--display-brand-red);
+  --display-button-shadow: rgba(200, 50, 50, 0.14);
+  --display-status-bg: rgba(255, 255, 255, 0.78);
+  --display-status-text: #4b4443;
+  --display-status-border: var(--display-border);
+  --display-surface-card-bg: rgba(255, 255, 255, 0.82);
+  --display-surface-card-bg-elevated: rgba(252, 248, 247, 0.94);
+  --display-surface-card-border: rgba(94, 58, 55, 0.12);
+  --display-surface-card-border-strong: rgba(94, 58, 55, 0.2);
+  --display-surface-card-shadow: rgba(83, 44, 41, 0.12);
   --display-result-bg: var(--display-surface-card-bg);
   --display-result-bg-soft: var(--display-surface-card-bg-elevated);
-  --display-result-text: #c92b20;
-  --display-result-text-strong: #b81f17;
-  --display-result-text-secondary: rgba(184, 31, 23, 0.82);
+  --display-result-text: var(--display-brand-red);
+  --display-result-text-strong: #241f1f;
+  --display-result-text-secondary: #625a59;
   --display-result-shadow: var(--display-surface-card-shadow);
 
   /* === 状态色（克制使用）=== */
@@ -107,4 +121,37 @@
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
+
+  /* Shared UI semantic layers. Display tokens above remain unchanged. */
+  --color-info: #2563a8;
+  --color-info-strong: #174c82;
+  --color-info-soft: rgba(37, 99, 168, 0.09);
+  --color-info-border: rgba(37, 99, 168, 0.32);
+  --color-success-strong: #23623a;
+  --color-success-soft: rgba(47, 125, 74, 0.09);
+  --color-success-border: rgba(47, 125, 74, 0.32);
+  --color-warning-soft: rgba(185, 107, 0, 0.1);
+  --color-warning-border: rgba(185, 107, 0, 0.34);
+  --color-danger-strong: #982d22;
+  --color-danger-soft: rgba(192, 57, 43, 0.08);
+  --color-danger-border: rgba(192, 57, 43, 0.3);
+
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.75rem;
+
+  --radius-xl: 1rem;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.1);
+  --shadow-lg: 0 24px 64px rgba(4, 11, 20, 0.22);
+  --focus-ring-color: rgba(37, 99, 168, 0.72);
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 2px;
+  --duration-fast: 140ms;
+  --duration-normal: 220ms;
+  --duration-slow: 700ms;
+  --page-content-max: 92rem;
+  --admin-sidebar-width: 16.5rem;
 }

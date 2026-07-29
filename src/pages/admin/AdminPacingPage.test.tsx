@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listPrizes } from '../../db/adminRepository';
 import { createSignalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
@@ -186,6 +186,20 @@ describe('AdminPacingPage', () => {
     fireEvent.change(await screen.findByLabelText('一等奖 中奖概率'), { target: { value: '2' } });
 
     expect(screen.getAllByText('有未保存修改').length).toBeGreaterThan(0);
+  });
+
+  it('shows a recoverable loading error and retries the repository read', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(db.prizes, 'toArray').mockRejectedValueOnce(
+      new Error('测试数据库读取失败'),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('发放策略读取失败')).toBeInTheDocument();
+    expect(screen.getByText('测试数据库读取失败')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '重新加载' }));
+    expect(await screen.findByText('准备就绪')).toBeInTheDocument();
   });
 
   it('does not claim absolute effective probability for smart pacing', async () => {

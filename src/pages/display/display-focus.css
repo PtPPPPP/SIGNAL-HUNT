@@ -1,0 +1,309 @@
+.display-focus-instrument {
+  --focus-aperture-scale: 1;
+  --focus-ring-opacity: 0.62;
+  --focus-reticle-opacity: 0.16;
+  --focus-point-scale: 0.42;
+  position: relative;
+  display: grid;
+  width: clamp(13.5rem, 24vw, 19rem);
+  margin: 0 auto clamp(1.25rem, 2.8vh, 2rem);
+  place-items: center;
+  color: var(--display-brand-red);
+}
+
+.display-focus-aperture {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  transform: scale(var(--focus-aperture-scale));
+  transition:
+    transform 420ms cubic-bezier(0.22, 0.78, 0.28, 1),
+    opacity 260ms ease;
+}
+
+.display-focus-ring,
+.display-focus-ticks,
+.display-focus-reticle,
+.display-focus-point {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  pointer-events: none;
+}
+
+.display-focus-ring {
+  aspect-ratio: 1;
+  border: 1px solid rgba(200, 50, 50, 0.28);
+  border-radius: 50%;
+  opacity: var(--focus-ring-opacity);
+  transform: translate(-50%, -50%);
+  transition:
+    width 420ms cubic-bezier(0.22, 0.78, 0.28, 1),
+    border-color 260ms ease,
+    box-shadow 260ms ease,
+    opacity 260ms ease;
+}
+
+.display-focus-ring--outer {
+  width: 88%;
+}
+
+.display-focus-ring--middle {
+  width: 62%;
+  border-color: rgba(112, 88, 84, 0.24);
+}
+
+.display-focus-ring--inner {
+  width: 34%;
+  border-color: rgba(200, 50, 50, 0.34);
+}
+
+.display-focus-ticks {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: repeating-conic-gradient(
+    from -1deg,
+    rgba(200, 50, 50, 0.56) 0deg 0.7deg,
+    transparent 0.7deg 14deg
+  );
+  opacity: 0.32;
+  transform: translate(-50%, -50%);
+  mask: radial-gradient(circle, transparent 0 45%, #000 45.5% 49%, transparent 49.5%);
+  transition:
+    opacity 260ms ease,
+    transform 420ms cubic-bezier(0.22, 0.78, 0.28, 1);
+}
+
+.display-focus-reticle {
+  width: 72%;
+  aspect-ratio: 1;
+  opacity: var(--focus-reticle-opacity);
+  transform: translate(-50%, -50%);
+  transition:
+    width 360ms cubic-bezier(0.22, 0.78, 0.28, 1),
+    opacity 220ms ease;
+}
+
+.display-focus-reticle::before,
+.display-focus-reticle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  background: rgba(200, 50, 50, 0.72);
+  content: '';
+  transform: translate(-50%, -50%);
+}
+
+.display-focus-reticle::before {
+  width: 100%;
+  height: 1px;
+}
+
+.display-focus-reticle::after {
+  width: 1px;
+  height: 100%;
+}
+
+.display-focus-point {
+  width: 0.82rem;
+  aspect-ratio: 1;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  border-radius: 50%;
+  background: var(--display-brand-red);
+  box-shadow: 0 0 0 1px rgba(200, 50, 50, 0.24);
+  transform: translate(-50%, -50%) scale(var(--focus-point-scale));
+  transition:
+    box-shadow 240ms ease,
+    transform 280ms cubic-bezier(0.22, 0.78, 0.28, 1);
+}
+
+.display-focus-readout {
+  position: absolute;
+  bottom: 0.1rem;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--display-text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+  transform: translate(-50%, 100%);
+}
+
+.display-focus-readout span:first-child {
+  color: var(--display-brand-red);
+  font-variant-numeric: tabular-nums;
+}
+
+.display-focus-instrument[data-focus-phase='calibrating'] {
+  --focus-aperture-scale: 0.9;
+  --focus-ring-opacity: 0.44;
+  --focus-reticle-opacity: 0.12;
+}
+
+.display-focus-instrument[data-focus-phase='calibrating'] .display-focus-aperture {
+  animation: focus-channel-open 680ms cubic-bezier(0.22, 0.78, 0.28, 1) both;
+}
+
+.display-focus-instrument[data-focus-phase='calibrating'] .display-focus-ticks {
+  animation: focus-ticks-wake 900ms ease-out both;
+}
+
+.display-focus-instrument[data-focus-phase='scanning'] {
+  --focus-ring-opacity: 0.68;
+  --focus-reticle-opacity: 0.24;
+  --focus-point-scale: 0.58;
+}
+
+.display-focus-instrument[data-focus-phase='scanning'] .display-focus-ticks {
+  animation: focus-scan-calibration 1.5s cubic-bezier(0.22, 0.78, 0.28, 1) both;
+}
+
+.display-focus-instrument[data-focus-phase='scanning'] .display-focus-ring--outer {
+  box-shadow: 0 0 0 1.2rem rgba(200, 50, 50, 0.018);
+}
+
+.display-focus-instrument[data-focus-phase='focusing'] {
+  --focus-aperture-scale: 0.9;
+  --focus-ring-opacity: 0.78;
+  --focus-reticle-opacity: 0.38;
+  --focus-point-scale: 0.72;
+}
+
+.display-focus-instrument[data-focus-phase='focusing'] .display-focus-ring--outer {
+  width: 78%;
+}
+
+.display-focus-instrument[data-focus-phase='focusing'] .display-focus-ring--middle {
+  width: 50%;
+}
+
+.display-focus-instrument[data-focus-phase='focusing'] .display-focus-ring--inner {
+  width: 24%;
+}
+
+.display-focus-instrument[data-focus-phase='acquired'] {
+  --focus-aperture-scale: 0.86;
+  --focus-ring-opacity: 0.82;
+  --focus-reticle-opacity: 0.62;
+  --focus-point-scale: 1;
+}
+
+.display-focus-instrument[data-focus-phase='acquired'] .display-focus-point {
+  box-shadow:
+    0 0 0 1px rgba(200, 50, 50, 0.28),
+    0 0 0 0.65rem rgba(200, 50, 50, 0.06);
+}
+
+.display-focus-instrument[data-focus-phase='locked'] {
+  --focus-aperture-scale: 0.82;
+  --focus-ring-opacity: 0.92;
+  --focus-reticle-opacity: 0.78;
+  --focus-point-scale: 1;
+}
+
+.display-focus-instrument[data-focus-phase='locked'] .display-focus-reticle {
+  width: 48%;
+}
+
+.display-focus-instrument[data-focus-phase='locked'] .display-focus-ring--inner {
+  width: 20%;
+  border-color: rgba(200, 50, 50, 0.72);
+}
+
+.display-focus-instrument[data-focus-phase='resolving'] {
+  --focus-aperture-scale: 1.06;
+  --focus-ring-opacity: 0.46;
+  --focus-reticle-opacity: 0.18;
+  --focus-point-scale: 0.54;
+}
+
+.display-focus-instrument[data-focus-phase='resolving'] .display-focus-ring--outer {
+  width: 96%;
+}
+
+.display-focus-instrument[data-focus-phase='resolving'] .display-focus-ring--middle {
+  width: 74%;
+}
+
+.display-focus-instrument[data-focus-phase='resolving'] .display-focus-ring--inner {
+  width: 44%;
+}
+
+@keyframes focus-channel-open {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes focus-ticks-wake {
+  from {
+    opacity: 0.06;
+    transform: translate(-50%, -50%) scale(0.82);
+  }
+
+  to {
+    opacity: 0.32;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes focus-scan-calibration {
+  0% {
+    opacity: 0.18;
+    transform: translate(-50%, -50%) rotate(-6deg) scale(0.94);
+  }
+
+  58% {
+    opacity: 0.58;
+  }
+
+  100% {
+    opacity: 0.42;
+    transform: translate(-50%, -50%) rotate(6deg) scale(1);
+  }
+}
+
+.display-screen[data-view='drawing'] .display-panel::before {
+  opacity: 0.34;
+}
+
+.display-screen[data-view='drawing'] .primary-touch-target {
+  display: none;
+}
+
+@media (max-height: 800px) {
+  .display-focus-instrument {
+    width: clamp(11.5rem, 22vw, 14rem);
+    margin-bottom: 1rem;
+  }
+
+  .display-focus-readout {
+    font-size: 0.6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .display-focus-aperture,
+  .display-focus-ticks {
+    animation: none !important;
+  }
+
+  .display-focus-aperture,
+  .display-focus-ring,
+  .display-focus-ticks,
+  .display-focus-reticle,
+  .display-focus-point {
+    transition: none;
+  }
+}

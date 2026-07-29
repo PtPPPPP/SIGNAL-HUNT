@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { Button, Dialog, Feedback } from './AdminUI';
+
 type ReturnToDisplayButtonProps = {
   hasUnsavedChanges?: boolean;
 };
 
-export function ReturnToDisplayButton({ hasUnsavedChanges = false }: ReturnToDisplayButtonProps) {
+export function ReturnToDisplayButton({
+  hasUnsavedChanges = false,
+}: ReturnToDisplayButtonProps) {
   const navigate = useNavigate();
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [error, setError] = useState('');
@@ -30,29 +34,36 @@ export function ReturnToDisplayButton({ hasUnsavedChanges = false }: ReturnToDis
       setConfirmLeave(true);
       return;
     }
-
     void returnToDisplay();
   };
 
   return (
     <>
-      <button className="return-display-button" type="button" onClick={handleClick}>
-        ← 返回展会大屏
-      </button>
-      {error ? <p className="admin-field-error" role="alert">{error}</p> : null}
-      {confirmLeave ? (
-        <div className="confirm-card" role="alertdialog" aria-label="确认放弃未保存修改">
-          <p>当前修改尚未保存，是否离开？</p>
-          <div className="confirm-card-actions">
-            <button className="confirm-button-cancel" type="button" onClick={() => setConfirmLeave(false)}>
+      <div className="return-display-control">
+        <Button variant="secondary" onClick={handleClick}>
+          返回展会大屏
+        </Button>
+        {error ? <Feedback tone="danger">{error}</Feedback> : null}
+      </div>
+      <Dialog
+        open={confirmLeave}
+        role="alertdialog"
+        onClose={() => setConfirmLeave(false)}
+        title="确认放弃未保存修改"
+        description="当前修改尚未保存。离开后，这些修改将丢失。"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmLeave(false)}>
               继续编辑
-            </button>
-            <button className="confirm-button-ok" type="button" onClick={() => void returnToDisplay()}>
+            </Button>
+            <Button variant="danger" onClick={() => void returnToDisplay()}>
               放弃修改并返回
-            </button>
-          </div>
-        </div>
-      ) : null}
+            </Button>
+          </>
+        }
+      >
+        <p>请确认是否返回展会大屏。</p>
+      </Dialog>
     </>
   );
 }

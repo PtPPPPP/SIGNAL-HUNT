@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { liveQuery } from 'dexie';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 
 import { StatusBadge } from '../../components/ui/AdminUI';
 import { ReturnToDisplayButton } from '../../components/ui/ReturnToDisplayButton';
@@ -10,6 +10,8 @@ import {
   readSystemReadiness,
   type SystemReadiness,
 } from '../../features/admin/systemReadiness';
+import './admin.css';
+import './admin-pages.css';
 
 type AdminLayoutProps = {
   title: string;
@@ -21,34 +23,33 @@ type AdminLayoutProps = {
 
 const navGroups = [
   {
-    label: '概览',
-    items: [{ to: '/admin/dashboard', label: '控制台概览', icon: '概' }],
-  },
-  {
-    label: '展会运营',
+    label: '运营',
     items: [
-      { to: '/admin/event', label: '活动管理', icon: '活' },
-      { to: '/admin/prizes', label: '奖品管理', icon: '奖' },
-      { to: '/admin/pacing', label: '概率策略', icon: '%' },
-      { to: '/admin/records', label: '抽奖记录', icon: '录' },
+      { to: '/admin/dashboard', label: '概览', code: 'OV' },
+      { to: '/admin/event', label: '活动配置', code: 'EV' },
+      { to: '/admin/prizes', label: '奖池管理', code: 'PR' },
+      { to: '/admin/pacing', label: '发放策略', code: 'PC' },
+      { to: '/admin/records', label: '抽奖记录', code: 'RC' },
     ],
   },
   {
     label: '系统',
     items: [
-      { to: '/diagnostics', label: '系统诊断', icon: '诊' },
-      { to: '/admin/system', label: '系统设置', icon: '设' },
+      { to: '/admin/system#backup', label: '备份恢复', code: 'BK' },
+      { to: '/diagnostics', label: '运行诊断', code: 'DG' },
+      { to: '/admin/system#window', label: '窗口设置', code: 'WN' },
     ],
   },
-];
+] as const;
 
 export function AdminLayout({
   title,
-  eyebrow = 'Quantum Design 展会控制中心',
+  eyebrow = 'Quantum Design · 活动运营工作台',
   hasUnsavedChanges = false,
   db = signalHuntDatabase,
   children,
 }: AdminLayoutProps) {
+  const location = useLocation();
   const [currentTime, setCurrentTime] = useState(() => formatTime(new Date()));
   const [readiness, setReadiness] = useState<SystemReadiness>({
     label: '状态未检查',
@@ -56,7 +57,10 @@ export function AdminLayout({
   });
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => setCurrentTime(formatTime(new Date())), 30_000);
+    const intervalId = window.setInterval(
+      () => setCurrentTime(formatTime(new Date())),
+      30_000,
+    );
     return () => window.clearInterval(intervalId);
   }, []);
 
@@ -64,7 +68,9 @@ export function AdminLayout({
     const subscription = liveQuery(() => readSystemReadiness(db)).subscribe({
       next: (next) =>
         setReadiness((current) =>
-          current.label === next.label && current.tone === next.tone ? current : next,
+          current.label === next.label && current.tone === next.tone
+            ? current
+            : next,
         ),
       error: () => setReadiness({ label: '数据库异常', tone: 'danger' }),
     });
@@ -79,7 +85,7 @@ export function AdminLayout({
           <BrandMark variant="on-light" />
           <div>
             <strong>SIGNAL HUNT</strong>
-            <span>展会控制中心</span>
+            <span>运营工作台</span>
           </div>
         </div>
 
@@ -87,46 +93,68 @@ export function AdminLayout({
           {navGroups.map((group) => (
             <section className="admin-nav-group" key={group.label}>
               <p>{group.label}</p>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}
-                >
-                  <span className="admin-nav-icon" aria-hidden="true">
-                    {item.icon}
-                  </span>
-                  {item.label}
-                </NavLink>
-              ))}
+              {group.items.map((item) => {
+                const [pathname, hash = ''] = item.to.split('#');
+                const isAnchorItem = Boolean(hash);
+                const isAnchorActive =
+                  isAnchorItem &&
+                  location.pathname === pathname &&
+                  (location.hash === `#${hash}` ||
+                    (!location.hash && hash === 'window'));
+
+                return isAnchorItem ? (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`admin-nav-link${isAnchorActive ? ' active' : ''}`}
+                  >
+                    <span className="admin-nav-code" aria-hidden="true">
+                      {item.code}
+                    </span>
+                    {item.label}
+                  </Link>
+                ) : (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end
+                    className={({ isActive }) =>
+                      `admin-nav-link${isActive ? ' active' : ''}`
+                    }
+                  >
+                    <span className="admin-nav-code" aria-hidden="true">
+                      {item.code}
+                    </span>
+                    {item.label}
+                  </NavLink>
+                );
+              })}
             </section>
           ))}
         </nav>
+
+        <footer className="admin-sidebar-footer">
+          <StatusBadge tone={readiness.tone}>{readiness.label}</StatusBadge>
+          <span>本机离线运行</span>
+        </footer>
       </aside>
 
       <section className="admin-workspace">
         <header className="admin-topbar">
           <div className="admin-topbar-heading">
-            <ReturnToDisplayButton hasUnsavedChanges={hasUnsavedChanges} />
             <p>{eyebrow}</p>
             <h1>{title}</h1>
           </div>
-          <div className="admin-topbar-status" aria-label="系统状态">
-            <div>
-              <span>运行模式</span>
-              <StatusBadge tone="neutral">离线模式</StatusBadge>
-            </div>
-            <div>
-              <span>系统状态</span>
-              <StatusBadge tone={readiness.tone}>{readiness.label}</StatusBadge>
-            </div>
-            <div>
+          <div className="admin-topbar-actions">
+            <div className="admin-topbar-status" aria-label="系统状态">
               <span>本地时间</span>
               <strong>{currentTime}</strong>
+              <StatusBadge tone="neutral">离线模式</StatusBadge>
             </div>
+            <ReturnToDisplayButton hasUnsavedChanges={hasUnsavedChanges} />
           </div>
         </header>
-        {children}
+        <div className="admin-page-content">{children}</div>
       </section>
     </main>
   );

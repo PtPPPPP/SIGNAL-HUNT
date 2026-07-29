@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createSignalHuntDatabase, type SignalHuntDatabase } from '../../db/database';
@@ -115,6 +115,23 @@ describe('DisplayPage event-status lifecycle (production mode, demo seed disable
     await act(async () => {
       await activateEvent(db, event.id);
     });
+    expect(await screen.findByRole('button', { name: /点亮好运/ })).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveAttribute('data-state', 'ATTRACT');
+  });
+
+  it('shows a stable error and recovers after the database becomes readable', async () => {
+    await seedEvent(db, event);
+    await seedPrizes(db, [prize()]);
+    db.close();
+
+    render(<DisplayPage db={db} />);
+
+    expect(await screen.findByRole('heading', { name: '系统数据暂时不可用' })).toBeInTheDocument();
+    const retryButton = screen.getByRole('button', { name: '重试同步' });
+
+    await db.open();
+    fireEvent.click(retryButton);
+
     expect(await screen.findByRole('button', { name: /点亮好运/ })).toBeInTheDocument();
     expect(screen.getByRole('main')).toHaveAttribute('data-state', 'ATTRACT');
   });

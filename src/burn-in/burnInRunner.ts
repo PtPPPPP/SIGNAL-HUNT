@@ -40,6 +40,8 @@ export interface BurnInReport {
   // Memory (Node only; undefined in a pure browser context).
   heapUsedStartBytes?: number;
   heapUsedEndBytes?: number;
+  /** Highest sampled heap use during the run, for leak investigation. */
+  heapUsedPeakBytes?: number;
   // Control.
   stoppedReason: 'duration' | 'cap' | 'exhausted';
   config: BurnInConfigSnapshot;
@@ -176,6 +178,7 @@ export async function runBurnIn(
   const start = performance.now();
   const initialInventorySum = await inventorySum(db);
   const heapStart = heapUsedBytes();
+  let heapPeak = heapStart;
   const cycleCap = options.cycleCap ?? 200000;
   const progressIntervalMs = options.progressIntervalMs ?? 5000;
 
@@ -191,6 +194,8 @@ export async function runBurnIn(
     const negativePrizes = final ? await negativeInventoryPrizes(db) : [];
     const recordCount = final ? await db.drawRecords.count() : drawCount;
     const durationMs = performance.now() - start;
+    const heapEnd = heapUsedBytes();
+    if (heapEnd != null && (heapPeak == null || heapEnd > heapPeak)) heapPeak = heapEnd;
     const violations = computeViolations({
       durationTargetMs: options.durationMs,
       durationMs,
@@ -220,7 +225,8 @@ export async function runBurnIn(
       inventoryDecrement: initialInventorySum - remainingInventorySum,
       throughputDrawsPerSec: durationMs > 0 ? drawCount / (durationMs / 1000) : 0,
       heapUsedStartBytes: heapStart,
-      heapUsedEndBytes: heapUsedBytes(),
+      heapUsedEndBytes: heapEnd,
+      heapUsedPeakBytes: heapPeak,
       stoppedReason,
       config: { eventId, durationTargetMs: options.durationMs, cycleCap, progressIntervalMs },
       violations,

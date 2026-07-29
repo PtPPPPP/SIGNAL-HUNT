@@ -1,4 +1,4 @@
-import { AdminButton, StatusBadge } from '../../../../components/ui/AdminUI';
+import { Button, Dialog, StatusBadge } from '../../../../components/ui/AdminUI';
 import type { Prize } from '../../../../domain/draw/types';
 import { formatSigned } from '../format';
 import type { PacingPreview, ProbabilityDraft } from '../types';
@@ -18,18 +18,22 @@ export function AutoBalanceDialog({
   onCancel,
   onConfirm,
 }: AutoBalanceDialogProps) {
-  if (!preview) {
-    return null;
-  }
-
   return (
-    <div className="pacing-dialog-backdrop">
-      <section className="pacing-dialog" role="dialog" aria-label={preview.title} aria-modal="true">
+    <Dialog
+      open={Boolean(preview)}
+      title={preview?.title ?? '自动平衡预览'}
+      description="确认后才会应用到当前草稿，保存前不会写入真实配置。"
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel}>取消</Button>
+          <Button onClick={onConfirm}>确认应用</Button>
+        </>
+      }
+    >
+      {preview ? (
+        <>
         <div className="admin-panel-header">
-          <div>
-            <p>确认后才会应用</p>
-            <h2>{preview.title}</h2>
-          </div>
           <StatusBadge tone="brand">预览</StatusBadge>
         </div>
 
@@ -52,13 +56,8 @@ export function AutoBalanceDialog({
           })}
         </div>
 
-        <div className="pacing-dialog-actions">
-          <AdminButton variant="secondary" onClick={onCancel}>
-            取消
-          </AdminButton>
-          <AdminButton onClick={onConfirm}>确认应用</AdminButton>
-        </div>
-      </section>
-    </div>
+        </>
+      ) : null}
+    </Dialog>
   );
 }

@@ -1,0 +1,389 @@
+.staff-console {
+  --staff-bg: #07111e;
+  --staff-surface: #0d1b2b;
+  --staff-surface-elevated: #12243a;
+  --staff-border: rgba(132, 177, 220, 0.22);
+  --staff-text: #f3f8fc;
+  --staff-text-secondary: #a9bfd2;
+  --staff-accent: #4bb3fd;
+
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: clamp(0.75rem, 1.2vw, 1.25rem);
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(75, 179, 253, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(75, 179, 253, 0.035) 1px, transparent 1px),
+    var(--staff-bg);
+  background-size: 2.5rem 2.5rem;
+  color: var(--staff-text);
+  padding: clamp(1rem, 2vw, 2rem);
+}
+
+.staff-console .ui-button {
+  min-height: var(--touch-control-height);
+}
+
+.staff-console .ui-button--primary {
+  background: #1b80c9;
+  color: #fff;
+}
+
+.staff-console .ui-button--primary:hover:not(:disabled) {
+  background: #1470b3;
+}
+
+.staff-console .ui-button--secondary {
+  border-color: var(--staff-border);
+  background: var(--staff-surface-elevated);
+  color: var(--staff-text);
+}
+
+.staff-console .ui-button--secondary:hover:not(:disabled),
+.staff-console .ui-button--ghost:hover:not(:disabled) {
+  background: #19314b;
+}
+
+.staff-console .ui-sticky-action-bar {
+  position: static;
+  align-items: center;
+  border: 1px solid var(--staff-border);
+  border-radius: var(--radius-lg);
+  background: rgba(13, 27, 43, 0.96);
+  padding: clamp(0.75rem, 1.3vw, 1.25rem);
+  backdrop-filter: none;
+}
+
+.staff-console .ui-state {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  border-color: var(--staff-border);
+  background: var(--staff-surface);
+}
+
+.staff-console .ui-state__icon {
+  background: var(--staff-surface-elevated);
+  color: var(--staff-accent);
+}
+
+.staff-console .ui-state p {
+  color: var(--staff-text-secondary);
+}
+
+.staff-console-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--staff-border);
+  padding-bottom: clamp(0.75rem, 1.2vw, 1.25rem);
+}
+
+.staff-console-header__brand {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.staff-console-header__brand .brand-mark {
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.staff-console-header p,
+.staff-console-header h1 {
+  margin: 0;
+}
+
+.staff-console-header p {
+  color: var(--staff-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.staff-console-header h1 {
+  margin-top: var(--space-1);
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  line-height: 1.1;
+}
+
+.staff-console__feedback {
+  min-height: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.staff-console__feedback:empty {
+  display: none;
+}
+
+.staff-console__content {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: clamp(0.75rem, 1.2vw, 1.25rem);
+}
+
+.staff-current-draw {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 24%);
+  overflow: hidden;
+  border: 1px solid var(--staff-border);
+  border-radius: var(--radius-xl);
+  background: var(--staff-surface);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.28);
+}
+
+.staff-current-draw__primary {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.72fr) minmax(16rem, 1fr);
+  grid-template-rows: 1fr auto;
+  gap: clamp(1rem, 2vw, 2rem);
+  padding: clamp(1rem, 2.2vw, 2.25rem);
+}
+
+.staff-prize-visual {
+  position: relative;
+  grid-row: 1 / 3;
+  min-height: 15rem;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-3);
+  border: 1px solid rgba(75, 179, 253, 0.34);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(75, 179, 253, 0.18), transparent 58%),
+    #091827;
+}
+
+.staff-prize-visual::before,
+.staff-prize-visual::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border: 1px solid rgba(75, 179, 253, 0.22);
+  border-radius: 50%;
+}
+
+.staff-prize-visual::after {
+  inset: 25%;
+}
+
+.staff-prize-visual__scan {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 50%;
+  height: 1px;
+  background: var(--staff-accent);
+  box-shadow: 0 0 12px rgba(75, 179, 253, 0.65);
+}
+
+.staff-prize-visual strong {
+  z-index: 1;
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  letter-spacing: 0.08em;
+}
+
+.staff-prize-visual small {
+  z-index: 1;
+  color: var(--staff-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.staff-prize-information {
+  align-self: end;
+  min-width: 0;
+}
+
+.staff-prize-information p,
+.staff-prize-information h2,
+.staff-prize-information span {
+  margin: 0;
+}
+
+.staff-prize-information p {
+  color: var(--staff-accent);
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.staff-prize-information h2 {
+  margin-top: var(--space-2);
+  overflow-wrap: anywhere;
+  font-size: clamp(2.1rem, 4vw, 4.5rem);
+  line-height: 1;
+}
+
+.staff-prize-information span {
+  display: block;
+  margin-top: var(--space-3);
+  overflow: hidden;
+  color: var(--staff-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-draw-metadata {
+  align-self: end;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.staff-draw-metadata div {
+  min-width: 0;
+  border-top: 1px solid var(--staff-border);
+  padding-top: var(--space-3);
+}
+
+.staff-draw-metadata dt {
+  color: var(--staff-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.staff-draw-metadata dd {
+  margin: var(--space-1) 0 0;
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-status-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-3);
+  border-left: 1px solid var(--staff-border);
+  background: rgba(18, 36, 58, 0.72);
+  padding: clamp(1rem, 2vw, 2rem);
+}
+
+.staff-status-panel > span {
+  color: var(--staff-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.staff-status-panel .status-badge {
+  width: max-content;
+}
+
+.staff-status-panel strong {
+  font-size: clamp(1.35rem, 2vw, 2rem);
+}
+
+.staff-status-panel p,
+.staff-status-panel small {
+  margin: 0;
+  color: var(--staff-text-secondary);
+  line-height: 1.55;
+}
+
+.staff-action-note {
+  min-width: 12rem;
+  flex: 1;
+  margin: 0;
+  color: var(--staff-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.staff-confirmation-note {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.staff-void-form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+@media (max-width: 1100px), (max-height: 760px) {
+  .staff-console {
+    padding: 0.85rem;
+  }
+
+  .staff-current-draw {
+    grid-template-columns: minmax(0, 1fr) minmax(14rem, 25%);
+  }
+
+  .staff-current-draw__primary {
+    grid-template-columns: minmax(10rem, 0.6fr) minmax(14rem, 1fr);
+    gap: 0.9rem;
+    padding: 1rem;
+  }
+
+  .staff-prize-visual {
+    min-height: 10rem;
+  }
+
+  .staff-status-panel {
+    padding: 1rem;
+  }
+
+  .staff-console .ui-sticky-action-bar {
+    padding: 0.75rem;
+  }
+}
+
+@media (max-width: 820px) {
+  .staff-console {
+    overflow: auto;
+  }
+
+  .staff-current-draw {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-current-draw__primary {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-prize-visual {
+    grid-row: auto;
+  }
+
+  .staff-status-panel {
+    border-top: 1px solid var(--staff-border);
+    border-left: 0;
+  }
+
+  .staff-console .ui-sticky-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .staff-action-note {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-prize-visual__scan {
+    box-shadow: none;
+  }
+}

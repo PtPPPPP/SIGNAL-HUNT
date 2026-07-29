@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-import { setDefaultEventOpenTime } from './db';
+import {
+  drawAndRevealPrize,
+  seedDemoThenImportPrizes,
+  setDefaultEventOpenTime,
+} from './db';
 
 const viewports = [
   { width: 1920, height: 1080 },
@@ -41,3 +45,48 @@ for (const viewport of viewports) {
     expect(layout.titleFitsViewport).toBe(true);
   });
 }
+
+test('display result and confirmation fit 1280x800 with a long prize name', async ({ page }) => {
+  const longPrizeName = '量子测量系统精密信号分析纪念套装';
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await seedDemoThenImportPrizes(
+    page,
+    JSON.stringify([
+      {
+        id: 'long-display-prize',
+        name: longPrizeName,
+        shortName: '信号分析套装',
+        level: 1,
+        inventoryTotal: 1,
+        inventoryRemaining: 1,
+        weight: 1,
+        enabled: true,
+      },
+    ]),
+  );
+
+  await page.goto('/display');
+  await expect(drawAndRevealPrize(page)).resolves.toBe(longPrizeName);
+
+  const resultLayout = await page.locator('.display-result').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      left: rect.left,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    };
+  });
+
+  expect(resultLayout.left).toBeGreaterThanOrEqual(0);
+  expect(resultLayout.top).toBeGreaterThanOrEqual(0);
+  expect(resultLayout.right).toBeLessThanOrEqual(resultLayout.viewportWidth);
+  expect(resultLayout.bottom).toBeLessThanOrEqual(resultLayout.viewportHeight);
+
+  await page.getByRole('button', { name: '下一位参与者' }).click();
+  const confirmation = page.getByRole('alertdialog', { name: '确认结束当前中奖结果' });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toBeInViewport();
+});

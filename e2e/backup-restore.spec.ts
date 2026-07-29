@@ -65,7 +65,7 @@ function backup(inventoryRemaining: number, withActiveDraw = false) {
   };
 }
 
-test('invalid backup leaves DB unchanged; valid restore syncs display and admin', async ({ context, page: display }) => {
+test('backup restore keeps the recovered display stable across repeated sync snapshots', async ({ context, page: display }) => {
   await setDefaultEventOpenTime(context);
   await display.goto('/display');
   await expect(display.locator('main')).toHaveAttribute('data-state', 'ATTRACT');
@@ -73,10 +73,9 @@ test('invalid backup leaves DB unchanged; valid restore syncs display and admin'
   const admin = await context.newPage();
   await admin.goto('/admin/system');
   const originalEvents = await readStore<{ id: string }>(admin, 'events');
-  const importTextarea = admin.locator('textarea').nth(1);
-  const buttons = admin.locator('button.admin-button');
-  const parseButton = buttons.nth(3);
-  const restoreButton = buttons.nth(4);
+  const importTextarea = admin.getByLabel('备份 JSON');
+  const parseButton = admin.getByRole('button', { name: '解析并预览' });
+  const restoreButton = admin.getByRole('button', { name: '恢复备份' });
 
   await importTextarea.fill(JSON.stringify(backup(-1)));
   await parseButton.click();
@@ -87,7 +86,7 @@ test('invalid backup leaves DB unchanged; valid restore syncs display and admin'
   await parseButton.click();
   await expect(restoreButton).toBeEnabled();
   await restoreButton.click();
-  await admin.locator('.confirm-button-ok').click();
+  await admin.getByRole('button', { name: '确认恢复' }).click();
 
   await expect(display.locator('main')).toHaveAttribute('data-state', 'RESULT');
   await expect(display.getByText(restoredPrizeName)).toBeVisible();

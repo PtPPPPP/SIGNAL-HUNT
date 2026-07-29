@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { installGlobalErrorCapture } from '../features/diagnostics/errorLog';
+import { DisplayErrorBoundary } from '../features/display/DisplayErrorBoundary';
 
 installGlobalErrorCapture();
 
@@ -38,7 +39,14 @@ export function App() {
       <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
           <Route path="/" element={<Navigate to="/display" replace />} />
-          <Route path="/display" element={<DisplayPage />} />
+          <Route
+            path="/display"
+            element={
+              <DisplayErrorBoundary>
+                <DisplayPage />
+              </DisplayErrorBoundary>
+            }
+          />
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/event" element={<AdminEventPage />} />
           <Route path="/admin/prizes" element={<AdminPrizesPage />} />

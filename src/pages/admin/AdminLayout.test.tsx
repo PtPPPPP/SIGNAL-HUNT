@@ -75,6 +75,22 @@ describe('AdminLayout readiness', () => {
 
     expect(screen.queryByRole('link', { name: /外观/ })).not.toBeInTheDocument();
     expect(await screen.findByText('无活动')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /概览/ })).toHaveAttribute(
+      'href',
+      '/admin/dashboard',
+    );
+    expect(screen.getByRole('link', { name: /活动配置/ })).toHaveAttribute(
+      'href',
+      '/admin/event',
+    );
+    expect(screen.getByRole('link', { name: /备份恢复/ })).toHaveAttribute(
+      'href',
+      '/admin/system#backup',
+    );
+    expect(screen.getByRole('link', { name: /运行诊断/ })).toHaveAttribute(
+      'href',
+      '/diagnostics',
+    );
   });
 
   it('does not claim a healthy or empty state before the database check completes', () => {

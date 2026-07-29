@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
 import { listPrizes } from '../../db/adminRepository';
@@ -30,7 +30,7 @@ describe('AdminPrizesPage', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText('奖品 JSON'), {
+    fireEvent.change(await screen.findByLabelText('奖品 JSON'), {
       target: {
         value: JSON.stringify([
         {
@@ -64,10 +64,10 @@ describe('AdminPrizesPage', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText('奖项名称'), { target: { value: 'Invalid Prize' } });
+    fireEvent.change(await screen.findByLabelText('奖项名称'), { target: { value: 'Invalid Prize' } });
     fireEvent.change(screen.getByLabelText('简称'), { target: { value: 'Invalid' } });
-    fireEvent.change(screen.getByLabelText('总量'), { target: { value: '1' } });
-    fireEvent.change(screen.getByLabelText('剩余'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('库存总量'), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('当前剩余'), { target: { value: '2' } });
 
     await user.click(screen.getByRole('button', { name: '保存奖品' }));
 
@@ -84,11 +84,11 @@ describe('AdminPrizesPage', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText('奖项名称'), { target: { value: 'Smart Prize' } });
+    fireEvent.change(await screen.findByLabelText('奖项名称'), { target: { value: 'Smart Prize' } });
     fireEvent.change(screen.getByLabelText('简称'), { target: { value: 'Smart' } });
     await user.selectOptions(screen.getByLabelText('概率模式'), 'SMART_PACING');
-    fireEvent.change(screen.getByLabelText('总量'), { target: { value: '3' } });
-    fireEvent.change(screen.getByLabelText('剩余'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('库存总量'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('当前剩余'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('基础权重'), { target: { value: '2' } });
     fireEvent.change(screen.getByLabelText('最小倍率'), { target: { value: '0.3' } });
     fireEvent.change(screen.getByLabelText('最大倍率'), { target: { value: '2.5' } });
@@ -123,11 +123,11 @@ describe('AdminPrizesPage', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText('奖项名称'), { target: { value: 'Bad Schedule' } });
+    fireEvent.change(await screen.findByLabelText('奖项名称'), { target: { value: 'Bad Schedule' } });
     fireEvent.change(screen.getByLabelText('简称'), { target: { value: 'Bad' } });
     await user.selectOptions(screen.getByLabelText('概率模式'), 'TIME_RELEASE');
-    fireEvent.change(screen.getByLabelText('总量'), { target: { value: '3' } });
-    fireEvent.change(screen.getByLabelText('剩余'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('库存总量'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('当前剩余'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('释放计划'), { target: { value: '09:00,2\n11:00,1' } });
 
     await user.click(screen.getByRole('button', { name: '保存奖品' }));
@@ -145,7 +145,7 @@ describe('AdminPrizesPage', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText('奖项名称'), { target: { value: 'Locked Prize' } });
+    fireEvent.change(await screen.findByLabelText('奖项名称'), { target: { value: 'Locked Prize' } });
     fireEvent.change(screen.getByLabelText('简称'), { target: { value: 'Locked' } });
     await user.selectOptions(screen.getByLabelText('概率模式'), 'TIME_RELEASE');
     fireEvent.change(screen.getByLabelText('基础权重'), { target: { value: '5' } });
@@ -154,10 +154,28 @@ describe('AdminPrizesPage', () => {
     expect(await screen.findByText('暂时锁定')).toBeInTheDocument();
     expect(screen.getAllByText('0.00').length).toBeGreaterThan(0);
   });
+
+  it('labels availability without confusing disabled or zero-weight prizes with empty inventory', async () => {
+    await db.prizes.bulkPut([
+      { id: 'available', name: '可用奖品', shortName: '可用', level: 1, inventoryTotal: 2, inventoryRemaining: 2, weight: 1, enabled: true },
+      { id: 'disabled', name: '停用奖品', shortName: '停用', level: 2, inventoryTotal: 2, inventoryRemaining: 2, weight: 1, enabled: false },
+      { id: 'zero-weight', name: '零权重奖品', shortName: '零权重', level: 3, inventoryTotal: 2, inventoryRemaining: 2, weight: 0, enabled: true },
+      { id: 'empty', name: '空库存奖品', shortName: '空库存', level: 4, inventoryTotal: 2, inventoryRemaining: 0, weight: 1, enabled: true },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={['/admin/prizes']}>
+        <AdminPrizesPage db={db} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('可参与抽奖')).toBeInTheDocument();
+    expect(screen.getByText('已停用')).toBeInTheDocument();
+    expect(screen.getByText('权重为零')).toBeInTheDocument();
+    expect(screen.getByText('库存已空')).toBeInTheDocument();
+  });
   it('resets prize inventory and clears current event draw state', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
     await db.events.put({
       id: 'event-1',
       name: 'Event',
@@ -203,6 +221,7 @@ describe('AdminPrizesPage', () => {
 
     await screen.findByText('Prize A');
     await user.click(screen.getByRole('button', { name: '重置奖品' }));
+    await user.click(screen.getByRole('button', { name: '确认重置' }));
 
     await waitFor(async () => {
       const [prize] = await listPrizes(db);
@@ -210,14 +229,10 @@ describe('AdminPrizesPage', () => {
       await expect(db.drawRecords.count()).resolves.toBe(0);
       await expect(db.drawSessions.count()).resolves.toBe(0);
     });
-
-    confirmSpy.mockRestore();
   });
 
   it('restores the packaged default prize pool when old local data exists', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
     await db.events.put({
       id: 'event-1',
       name: 'Event',
@@ -255,6 +270,7 @@ describe('AdminPrizesPage', () => {
 
     await screen.findByText('Legacy Prize');
     await user.click(screen.getByRole('button', { name: '恢复默认奖池' }));
+    await user.click(screen.getByRole('button', { name: '确认恢复' }));
 
     await waitFor(async () => {
       const prizes = await listPrizes(db);
@@ -269,7 +285,5 @@ describe('AdminPrizesPage', () => {
       });
       await expect(db.drawRecords.count()).resolves.toBe(0);
     });
-
-    confirmSpy.mockRestore();
   });
 });

@@ -102,10 +102,10 @@ export async function seedDemoThenImportPrizes(page: Page, json: string): Promis
 
 export async function importPrizeJson(page: Page, json: string): Promise<void> {
   await page.goto('/admin/prizes');
-  const jsonField = page.locator('.admin-json-field textarea');
+  const jsonField = page.getByLabel('奖品 JSON');
   await expect(jsonField).toBeVisible();
   await jsonField.fill(json);
-  await page.locator('.admin-toolbar button').nth(2).click();
+  await page.getByRole('button', { name: '导入 JSON' }).click();
 }
 
 export const THREE_PRIZE_JSON = JSON.stringify(

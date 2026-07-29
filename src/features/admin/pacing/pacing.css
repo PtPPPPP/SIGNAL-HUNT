@@ -526,9 +526,7 @@
 }
 
 .pacing-action-bar {
-  position: sticky;
-  bottom: var(--space-4);
-  z-index: 5;
+  position: static;
   display: grid;
   grid-template-columns: minmax(12rem, 1fr) auto;
   gap: var(--space-4);
@@ -538,11 +536,10 @@
   background: rgba(255, 255, 255, 0.94);
   padding: var(--space-4);
   box-shadow: 0 18px 50px rgba(15, 23, 42, 0.14);
-  backdrop-filter: blur(12px);
+  backdrop-filter: none;
 }
 
-.pacing-action-buttons,
-.pacing-dialog-actions {
+.pacing-action-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
@@ -559,31 +556,8 @@
   margin: 0;
 }
 
-.pacing-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  background: rgba(15, 23, 42, 0.36);
-  padding: var(--space-8);
-}
 
-.pacing-dialog {
-  width: min(760px, 100%);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: #fff;
-  padding: var(--space-6);
-  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.24);
-}
-
-.pacing-dialog-actions {
-  justify-content: flex-end;
-  margin-top: var(--space-6);
-}
-
-@media (max-width: 1230px) {
+@media (max-width: 1300px) {
   .probability-table-header {
     display: none;
   }
@@ -712,7 +686,4 @@
     flex: 1 1 100%;
   }
 
-  .pacing-dialog-backdrop {
-    padding: var(--space-3);
-  }
 }

@@ -31,20 +31,31 @@ export function usePacingConfig(db: SignalHuntDatabase = signalHuntDatabase) {
   const [lastEditedPrizeId, setLastEditedPrizeId] = useState<string | undefined>(undefined);
   const [preview, setPreview] = useState<PacingPreview | undefined>(undefined);
   const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [nextPrizes, nextRecords, event] = await Promise.all([
-      listPrizes(db),
-      listDrawRecords(db),
-      getConfiguredActiveEvent(db),
-    ]);
-
-    setPrizes(nextPrizes);
-    setRecords(nextRecords);
-    setActiveEvent(event);
-    setDrafts((currentDrafts) => createDraftsFromPrizes(nextPrizes, currentDrafts));
+    setIsLoading(true);
+    setLoadError('');
+    try {
+      const [nextPrizes, nextRecords, event] = await Promise.all([
+        listPrizes(db),
+        listDrawRecords(db),
+        getConfiguredActiveEvent(db),
+      ]);
+      setPrizes(nextPrizes);
+      setRecords(nextRecords);
+      setActiveEvent(event);
+      setDrafts((currentDrafts) => createDraftsFromPrizes(nextPrizes, currentDrafts));
+      return true;
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : '读取发放策略失败。');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
   }, [db]);
 
   useEffect(() => {
@@ -140,7 +151,11 @@ export function usePacingConfig(db: SignalHuntDatabase = signalHuntDatabase) {
 
       await replacePrizes(db, nextPrizes);
       publishAppChange('PACING_UPDATED', activeEvent?.id);
-      await refresh();
+      const refreshed = await refresh();
+      if (!refreshed) {
+        setMessage('配置已保存，但重新读取失败，请重新加载确认当前配置。');
+        return;
+      }
       setHasUnsavedChanges(false);
       setMessage('配置已保存。从下一次新抽奖开始生效；已经提交的结果不会改变。');
     } catch (error) {
@@ -155,6 +170,8 @@ export function usePacingConfig(db: SignalHuntDatabase = signalHuntDatabase) {
     drafts,
     expectedParticipants,
     hasUnsavedChanges,
+    isLoading,
+    loadError,
     message,
     mode,
     preview,
@@ -167,6 +184,7 @@ export function usePacingConfig(db: SignalHuntDatabase = signalHuntDatabase) {
     prepareAutoBalance,
     prepareInventorySuggestion,
     resetDrafts,
+    refresh,
     save,
     setExpectedParticipants,
     setMode,

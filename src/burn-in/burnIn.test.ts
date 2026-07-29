@@ -118,6 +118,9 @@ describe('burn-in runner', () => {
               remainingInventorySum: report.remainingInventorySum,
               throughputDrawsPerSec: Number(report.throughputDrawsPerSec.toFixed(1)),
               heapDelta: heapDeltaMb,
+              heapPeak: report.heapUsedPeakBytes != null
+                ? `${(report.heapUsedPeakBytes / 1024 / 1024).toFixed(1)} MB`
+                : 'n/a',
               passed: report.passed,
               violations: report.violations,
               config: report.config,

@@ -10,12 +10,12 @@ export type SignalRenderColors = {
 };
 
 export const defaultSignalRenderColors: SignalRenderColors = {
-  background: '#f7f7f5',
-  grid: 'rgba(0, 0, 0, 0.06)',
-  signal: 'rgba(90, 90, 90, 0.9)',
-  signalDim: 'rgba(90, 90, 90, 0.16)',
-  peak: 'rgba(208, 0, 0, 0.95)',
-  cursor: 'rgba(0, 0, 0, 0.38)',
+  background: 'rgba(250, 248, 247, 0)',
+  grid: 'rgba(118, 74, 70, 0.075)',
+  signal: 'rgba(176, 56, 55, 0.4)',
+  signalDim: 'rgba(105, 87, 85, 0.12)',
+  peak: 'rgba(200, 50, 50, 0.88)',
+  cursor: 'rgba(200, 50, 50, 0.22)',
 };
 
 export function renderSignalFrame(

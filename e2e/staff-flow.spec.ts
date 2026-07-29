@@ -11,13 +11,20 @@ test('staff redeems a result then ends its display without changing redemption',
   const prizeName = await drawAndRevealPrize(display);
 
   const staff = await context.newPage();
-  staff.on('dialog', (dialog) => void dialog.accept());
   await staff.goto('/staff');
   await expect(staff.getByRole('heading', { name: prizeName })).toBeVisible();
 
   await staff.getByRole('button', { name: '确认兑奖' }).click();
+  await staff
+    .getByRole('dialog', { name: '确认已完成兑奖？' })
+    .getByRole('button', { name: '确认兑奖' })
+    .click();
   await expect(staff.getByText('已确认兑奖。')).toBeVisible();
   await staff.getByRole('button', { name: '结束当前展示' }).click();
+  await staff
+    .getByRole('dialog', { name: '结束当前展示？' })
+    .getByRole('button', { name: '结束展示' })
+    .click();
 
   const records = await readStore<DrawRecord>(display, 'drawRecords');
   const sessions = await readStore(display, 'drawSessions');
@@ -34,12 +41,12 @@ test('staff voids the active result with a reason and ends the active session', 
   await drawAndRevealPrize(display);
 
   const staff = await context.newPage();
-  staff.on('dialog', (dialog) => void dialog.accept());
   await staff.goto('/staff');
-  await staff.getByLabel('作废原因').fill('现场误触');
   await staff.getByRole('button', { name: '作废记录' }).click();
+  await staff.getByLabel('作废原因').selectOption('现场误触');
+  await staff.getByRole('button', { name: '确认作废' }).click();
 
-  await expect(staff.getByText('已作废当前记录，大屏将返回待机。')).toBeVisible();
+  await expect(staff.getByText('结果已作废，当前展示已结束。')).toBeVisible();
   const records = await readStore<DrawRecord>(display, 'drawRecords');
   expect(records[0]).toMatchObject({ status: 'VOIDED', redeemed: false, voidReason: '现场误触' });
   await display.reload();

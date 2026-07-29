@@ -18,6 +18,14 @@ describe('BrandMark', () => {
     expect(img).toHaveClass('brand-logo');
   });
 
+  it('marks the existing asset for use on dark backgrounds without altering it', () => {
+    render(<BrandMark variant="on-dark" />);
+
+    expect(screen.getByAltText('Quantum Design').parentElement).toHaveClass(
+      'brand-mark--on-dark',
+    );
+  });
+
   it('shows a neutral placeholder (not a fake logo) when the asset fails to load', () => {
     render(<BrandMark variant="on-light" />);
 
